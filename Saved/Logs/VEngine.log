@@ -1,0 +1,20 @@
+[2026-11-20 12:54:34.225] [info] [LogCore] [Launch] Engine PreInit...
+[2026-11-20 12:54:34.228] [info] [LogCore] [ThreadPool] Initialized with 11 worker threads.
+[2026-11-20 12:54:34.229] [info] [LogCore] [Launch] Engine Init: Loading boot modules...
+[2026-11-20 12:54:34.230] [info] [LogCore] [Engine_Core] Preparing object registry...
+[2026-11-20 12:54:34.231] [info] [LogCore] [ModuleManager] Loaded module: Engine_Core
+[2026-11-20 12:54:34.232] [info] [LogCore] [Engine_Launch] Module started!
+[2026-11-20 12:54:34.233] [info] [LogCore] [ModuleManager] Loaded module: Engine_Launch
+[2026-11-20 12:54:34.235] [info] [LogCore] [ObjectRegistry] Registered: RObject (Super: None, Module: VEngine.Bootstrap)
+[2026-11-20 12:54:34.236] [info] [LogCore] [ObjectRegistry] Registered: FObjectScope (Super: RObject, Module: VEngine.Bootstrap)
+[2026-11-20 12:54:34.236] [info] [LogCore] [ObjectRegistry] Registered: WObject (Super: RObject, Module: Engine_Engine)
+[2026-11-20 12:54:34.236] [info] [LogCore] [Engine_Engine] Module started!
+[2026-11-20 12:54:34.236] [info] [LogCore] [ModuleManager] Loaded module: Engine_Engine
+[2026-11-20 12:54:34.237] [info] [LogCore] Entity created!
+[2026-11-20 12:54:34.238] [info] [LogCore] [ObjectRegistry] Registered: WGameObject (Super: WObject, Module: Game_Game)
+[2026-11-20 12:54:34.238] [info] [LogCore] [Game_Game] Module started!
+[2026-11-20 12:54:34.238] [debug] [LogCore] [ObjectRegistry] Created lifetime scope 'Game_Game' (ID: 5)
+[2026-11-20 12:54:34.238] [info] [LogCore] Entity created!
+[2026-11-20 12:54:34.238] [info] [LogCore] [Game_Game] cross-module chain: instance=0x200000a04f0 base=0x200000a04f0 same=true leaf=true objectIsA=true
+[2026-11-20 12:54:34.239] [info] [LogCore] [ModuleManager] Loaded module: Game_Game
+[2026-11-20 12:54:34.239] [info] [LogCore] [Launch] Main loop started: 60 FPS. Press Ctrl+C to stop.

@@ -376,7 +376,7 @@ public:
         }
         //10. Interface test
         {
-    constexpr const char* ModuleName = "InterfaceLifetime";
+    constexpr const char* ModuleName = "Tests_InterfaceLifetimeTest";
     constexpr const char* ClassName = "FInterfaceLifetimeProbe";
 
     FModuleManager& Modules = FModuleManager::Get();
