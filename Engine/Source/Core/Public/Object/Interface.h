@@ -74,7 +74,6 @@ struct TInterfaceList
 public: \
     using InterfaceBases = TInterfaceList<__VA_ARGS__>; \
     static const char* StaticInterfaceName() { return #InterfaceName; } \
-private:
 
 // Declares which interfaces a class implements. Go inside the class body, after RCLASS().
 // Variadic and non-recursive: no __VA_OPT__, no build flags, plain C++20.

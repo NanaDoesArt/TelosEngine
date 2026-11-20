@@ -89,12 +89,46 @@ void FObjectRegistry::CheckGameThread(const char* Operation) const
     }
 }
 
-bool FObjectRegistry::RegisterClass(
+void AddClassInterface(
+    FClassInfo& Info,
+    const char* InterfaceName,
+    void* (*GetAddress)(RObject*)
+)
+{
+    if (!InterfaceName || !*InterfaceName || !GetAddress)
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRegistry] Ignoring an invalid interface registration on '{}'.",
+            Info.Name.CStr()
+        );
+        return;
+    }
+
+    // Avoid duplicate entries, including interface diamonds.
+    for (const FImplementedInterface& Existing : Info.Interfaces)
+    {
+        if (Existing.Name == InterfaceName)
+        {
+            return;
+        }
+    }
+
+    FImplementedInterface Entry;
+    Entry.Name = FString(InterfaceName);
+    Entry.GetAddress = GetAddress;
+
+    Info.Interfaces.Add(std::move(Entry));
+}
+
+EClassRegistrationResult FObjectRegistry::RegisterClass(
     const FString& Name,
     const FString& SuperName,
     const FString& ModuleName,
     TFunction<RObject*()> Factory,
-    TFunction<void(RObject*)> CdoDeleter)
+    TFunction<void(RObject*)> CdoDeleter,
+    void (*AttachInterfaces)(FClassInfo&))
 {
     CheckGameThread("RegisterClass");
 
@@ -111,7 +145,7 @@ bool FObjectRegistry::RegisterClass(
             "[ObjectRegistry] Cannot register '{}': factory is empty.",
             Name.CStr()
         );
-        return false;
+        return EClassRegistrationResult::Failed;
     }
 
     // A class declared in a header is compiled into every module that includes it, so the same
@@ -130,7 +164,8 @@ bool FObjectRegistry::RegisterClass(
                 Existing->OwningModule.CStr(),
                 ModuleName.CStr()
             );
-            return true;
+
+            return EClassRegistrationResult::AlreadyRegistered;
         }
 
         // Same name, different base class: two different classes fighting over one name.
@@ -144,7 +179,7 @@ bool FObjectRegistry::RegisterClass(
             ModuleName.CStr(),
             SuperName.IsEmpty() ? "None" : SuperName.CStr()
         );
-        return false;
+        return EClassRegistrationResult::Failed;
     }
 
     FClassInfo NewClass;
@@ -172,6 +207,11 @@ bool FObjectRegistry::RegisterClass(
         // parents to it. Restore the previous site here: a default object must never remain the
         // owner of objects created after registration finishes.
         TScopedValue<RObject*> SiteScope(ActiveConstructionSite, nullptr);
+        
+        if (AttachInterfaces)
+        {
+            AttachInterfaces(*ClassInfo);
+        }
 
         ClassInfo->ClassDefaultObject = ClassInfo->Factory();
     }
@@ -199,7 +239,7 @@ bool FObjectRegistry::RegisterClass(
         DestroyClassDefaultObject(*ClassInfo);
         Classes.Remove(Name);
         ResolveSuperClasses();
-        return false;
+        return EClassRegistrationResult::Failed;
     }
 
     if (!SuperName.IsEmpty() && !ClassInfo->SuperClass)
@@ -223,7 +263,7 @@ bool FObjectRegistry::RegisterClass(
         SuperName.IsEmpty() ? "None" : SuperName.CStr(),
         ModuleName.CStr()
     );
-    return true;
+    return EClassRegistrationResult::Registered;
 }
 
 void FObjectRegistry::UnregisterClass(const FString& Name, const FString& ModuleName)
@@ -548,58 +588,6 @@ const FClassInfo* FObjectRegistry::FindClass(const FString& Name) const
     return Classes.Find(Name);
 }
 
-// ==============================================================================
-// Interfaces
-// ==============================================================================
-
-void FObjectRegistry::AddInterface(const FString& ClassName, FImplementedInterface Entry)
-{
-    CheckGameThread("AddInterface");
-
-    FClassInfo* Info = Classes.Find(ClassName);
-    if (!Info || !Entry.Name || !Entry.Thunk)
-    {
-        return;
-    }
-
-    // Same class, registered again from another module that includes its header. Keep the entry
-    // that is already there: its thunk lives in the module that owns the class, so it cannot be
-    // replaced by code from a module that may unload while the class still exists.
-    if (Info->FindInterface(Entry.Name))
-    {
-        VENGINE_LOG(
-            LogCore,
-            Verbose,
-            "[ObjectRegistry] '{}' already exposes interface '{}'; keeping the existing thunk.",
-            ClassName.CStr(),
-            Entry.Name
-        );
-        return;
-    }
-
-    Info->Interfaces.Add(Entry);
-}
-
-void* FObjectRegistry::GetInterfaceAddress(RObject* Object, const char* InterfaceName) const
-{
-    if (!Object || !InterfaceName)
-    {
-        return nullptr;
-    }
-
-    // Walk the class chain: an interface implemented by a base class is also implemented by every
-    // subclass, and the thunk found on the base is still correct for a subclass instance because
-    // the instance really is an instance of that base.
-    for (const FClassInfo* Info = Object->GetClass(); Info; Info = Info->SuperClass)
-    {
-        if (const FImplementedInterface* Entry = Info->FindInterface(InterfaceName))
-        {
-            return Entry->Thunk(Object);
-        }
-    }
-
-    return nullptr;
-}
 
 bool FObjectRegistry::HasLiveInstancesForModule(const FString& ModuleName, int32_t* OutCount) const
 {
@@ -783,15 +771,24 @@ void FObjectRegistry::EnsureBootstrapClasses()
     // may re-enter the registry.
     bBootstrapClassesRegistered = true;
 
-    // RObject first: FObjectScope's superclass has to resolve.
-    if (!RegisterClass<RObject>(BootstrapModuleName))
+    if (RegisterClass<RObject>(BootstrapModuleName) == EClassRegistrationResult::Failed)
     {
-        VENGINE_LOG(LogCore, Fatal, "[ObjectRegistry] Failed to register the bootstrap class 'RObject'.");
+        VENGINE_LOG(
+            LogCore,
+            Fatal,
+            "[ObjectRegistry] Failed to register the bootstrap class 'RObject'."
+        );
         return;
     }
-    if (!RegisterClass<FObjectScope>(BootstrapModuleName))
+
+    if (RegisterClass<FObjectScope>(BootstrapModuleName) == EClassRegistrationResult::Failed)
     {
-        VENGINE_LOG(LogCore, Fatal, "[ObjectRegistry] Failed to register the bootstrap class '{}'.", FObjectScope::StaticClassName());
+        VENGINE_LOG(
+            LogCore,
+            Fatal,
+            "[ObjectRegistry] Failed to register the bootstrap class '{}'.",
+            FObjectScope::StaticClassName()
+        );
         return;
     }
 }

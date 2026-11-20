@@ -229,8 +229,14 @@ public:
         {
             // Every module that includes a header gets its own copy of the registrar. The second
             // copy must be accepted and ignored, not treated as an error.
-            const bool bDuplicateIgnored = Registry.RegisterClass<RObject>("Tests_Tests");
-            VerifyCheck(bDuplicateIgnored, "DuplicateIgnored", "Re-registering an identical class is accepted.");
+            const EClassRegistrationResult DuplicateResult =
+                Registry.RegisterClass<RObject>("Tests_Tests");
+
+            VerifyCheck(
+                DuplicateResult == EClassRegistrationResult::AlreadyRegistered,
+                "DuplicateIgnored",
+                "Re-registering an identical class is accepted."
+            );
 
             const FClassInfo* RobjectClass = Registry.FindClass("RObject");
             VerifyCheck(
@@ -240,14 +246,19 @@ public:
             );
 
             // Same name, different base class: two different classes fighting over one name.
-            const bool bCollisionRejected = Registry.RegisterClass(
+            const EClassRegistrationResult CollisionResult = Registry.RegisterClass(
                 "FTestLeafEntity",
                 "FObjectScope",
                 "Tests_Tests",
                 &FTestLeafEntity::MakeInstance,
                 &FTestLeafEntity::DeleteInstance
             );
-            VerifyCheck(!bCollisionRejected, "NameCollisionRejected", "A same-name/different-base collision is rejected.");
+
+            VerifyCheck(
+                CollisionResult == EClassRegistrationResult::Failed,
+                "NameCollisionRejected",
+                "A same-name/different-base collision is rejected."
+            );
         }
 
         // 6. Releasing a module's objects destroys its whole scope subtree

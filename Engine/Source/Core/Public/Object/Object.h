@@ -226,13 +226,20 @@ struct TObjectRegistrar
     TObjectRegistrar()
     {
         FModuleClassRegistry::GetEntries().Add({
-            [](const FString& ModuleName) -> bool { return FObjectRegistry::Get().RegisterClass<TClass>(ModuleName); },
-            // VENGINE_CURRENT_MODULE_NAME is expanded in the module that compiled this copy of the
-            // registrar, which is exactly the module that owns this entry. Registering is
-            // idempotent; unregistering only removes metadata this module owns.
-            []() { FObjectRegistry::Get().UnregisterClass<TClass>(VENGINE_CURRENT_MODULE_NAME); },
-            [](const FString& ModuleName) -> bool {return FObjectRegistry::Get().RegisterClass<TClass>(ModuleName) != EClassRegistrationResult::Failed;
-}
+            [](const FString& ModuleName) -> bool
+            {
+                return FObjectRegistry::Get().RegisterClass<TClass>(ModuleName)
+                    != EClassRegistrationResult::Failed;
+            },
+
+            // VENGINE_CURRENT_MODULE_NAME is expanded in the module that compiled this copy
+            // of the registrar, which is exactly the module that owns this entry.
+            []()
+            {
+                FObjectRegistry::Get().UnregisterClass<TClass>(
+                    VENGINE_CURRENT_MODULE_NAME
+                );
+            }
         });
     }
 };
