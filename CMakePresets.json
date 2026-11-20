@@ -1,0 +1,94 @@
+﻿{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/Intermediate/Build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.10"
+      }
+    },
+    {
+      "name": "win-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "unix-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "win-debug",
+      "displayName": "Windows Debug",
+      "inherits": "win-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "win-release",
+      "displayName": "Windows Release",
+      "inherits": "win-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "unix-debug",
+      "displayName": "Linux/macOS Debug",
+      "inherits": "unix-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "unix-release",
+      "displayName": "Linux/macOS Release",
+      "inherits": "unix-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "win-debug",
+      "displayName": "Build Windows Debug",
+      "configurePreset": "win-debug"
+    },
+    {
+      "name": "win-release",
+      "displayName": "Build Windows Release",
+      "configurePreset": "win-release"
+    },
+    {
+      "name": "unix-debug",
+      "displayName": "Build Linux/macOS Debug",
+      "configurePreset": "unix-debug"
+    },
+    {
+      "name": "unix-release",
+      "displayName": "Build Linux/macOS Release",
+      "configurePreset": "unix-release"
+    }
+  ]
+}

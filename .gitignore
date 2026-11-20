@@ -1,0 +1,11 @@
+# VEngine Automated Git Ignore
+Intermediate/
+Build/
+.idea/
+.vs/
+cmake-build-*/
+*.user
+
+# Generated from Templates/ on every configure
+/*/CMakeLists.txt
+/*/Source/*/CMakeLists.txt
