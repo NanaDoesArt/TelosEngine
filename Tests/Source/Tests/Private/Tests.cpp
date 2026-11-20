@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <cstring>
+#include "InterfaceTest.h"
 
 namespace
 {
@@ -371,7 +372,109 @@ public:
 
             Destroy(Car);
             Destroy(Sports);
+            
         }
+        //10. Interface test
+        {
+    constexpr const char* ModuleName = "InterfaceLifetime";
+    constexpr const char* ClassName = "FInterfaceLifetimeProbe";
+
+    FModuleManager& Modules = FModuleManager::Get();
+
+    auto VerifyLoadedInterface = [&]()
+    {
+        const FClassInfo* Info = Registry.FindClass(ClassName);
+
+        VerifyCheck(
+            Info != nullptr,
+            "InterfaceLifetimeClassRegistered",
+            "The fixture class is registered."
+        );
+
+        const FImplementedInterface* Interface =
+            Info ? Info->FindInterface(
+                IInterfaceLifetimeProbe::StaticInterfaceName()
+            ) : nullptr;
+
+        VerifyCheck(
+            Interface != nullptr && Interface->GetAddress != nullptr,
+            "InterfaceLifetimeThunkRegistered",
+            "The class metadata contains a valid interface thunk."
+        );
+
+        const RObject* CDO = Registry.GetCDO(ClassName);
+
+        VerifyCheck(
+            CDO != nullptr,
+            "InterfaceLifetimeCDO",
+            "The fixture class default object exists."
+        );
+
+        const IInterfaceLifetimeProbe* Probe =
+            Cast<IInterfaceLifetimeProbe>(CDO);
+
+        VerifyCheck(
+            Probe != nullptr,
+            "InterfaceLifetimeCast",
+            "The CDO successfully casts to the interface."
+        );
+
+        VerifyCheck(
+            Probe && Probe->GetProbeValue() == 0x1234,
+            "InterfaceLifetimeDispatch",
+            "The interface thunk reaches the correct virtual implementation."
+        );
+    };
+
+    // First load.
+    VerifyCheck(
+        Modules.LoadModule(ModuleName) != nullptr,
+        "InterfaceLifetimeFirstLoad",
+        "The fixture module loads successfully."
+    );
+
+    VerifyLoadedInterface();
+
+    // Unload must unregister the class and its thunk before FreeDllHandle().
+    VerifyCheck(
+        Modules.UnloadModule(ModuleName),
+        "InterfaceLifetimeFirstUnload",
+        "The fixture module unloads successfully."
+    );
+
+    VerifyCheck(
+        !Modules.IsModuleLoaded(ModuleName),
+        "InterfaceLifetimeUnloaded",
+        "The module is no longer loaded."
+    );
+
+    VerifyCheck(
+        Registry.FindClass(ClassName) == nullptr,
+        "InterfaceLifetimeMetadataRemoved",
+        "The fixture class metadata was removed during unload."
+    );
+
+    // Load the same DLL again. This creates a new registration and a new thunk.
+    VerifyCheck(
+        Modules.LoadModule(ModuleName) != nullptr,
+        "InterfaceLifetimeSecondLoad",
+        "The fixture module loads again successfully."
+    );
+
+    VerifyLoadedInterface();
+
+    VerifyCheck(
+        Modules.UnloadModule(ModuleName),
+        "InterfaceLifetimeSecondUnload",
+        "The fixture module unloads successfully a second time."
+    );
+
+    VerifyCheck(
+        Registry.FindClass(ClassName) == nullptr,
+        "InterfaceLifetimeSecondCleanup",
+        "The second unload also removes the class metadata."
+    );
+}
 
         VENGINE_LOG(LogCore, Info, "[Tests] All in-module assertions PASSED!");
         return true;
