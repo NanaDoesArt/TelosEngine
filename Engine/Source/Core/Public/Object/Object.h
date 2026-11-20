@@ -118,27 +118,62 @@ public:
 // Safe Cross-DLL Cast<T>()
 // ==============================================================================
 
+// ==============================================================================
+// Safe Cross-DLL Cast<T>()
+//
+// Cast<To>() works for both kinds of target:
+//
+//   Cast<WFoo>(Object)    // class cast: walks the registered class chain
+//   Cast<IMyFoo>(Object)  // interface cast: uses the thunk emitted by RIMPLEMENTS
+//
+// Both are null-safe and return nullptr when the object is not of that class / does not implement
+// that interface. A class target must derive from RObject; an interface target must declare
+// RINTERFACE and the object's own class (or a base class) must list it in RIMPLEMENTS.
+// ==============================================================================
+
 template <typename To, typename From>
 To* Cast(From* Src)
 {
-    static_assert(std::is_base_of_v<RObject, To>, "Cast<To> target must inherit from RObject!");
     if (!Src)
     {
         return nullptr;
     }
-    return Src->template IsA<To>() ? static_cast<To*>(Src) : nullptr;
+
+    if constexpr (std::is_base_of_v<RObject, To>)
+    {
+        static_assert(std::is_base_of_v<RObject, From>,
+            "Cast<RObjectSubclass>() requires an RObject source.");
+        return Src->template IsA<To>() ? static_cast<To*>(Src) : nullptr;
+    }
+    else
+    {
+        static_assert(std::is_base_of_v<To, From> || std::is_base_of_v<RObject, From>,
+            "Cast<Interface>() from another interface supports upcasts only; keep the RObject* and cast from that.");
+
+        if constexpr (std::is_base_of_v<RObject, From>)
+        {
+            const FClassInfo* ClassInfo = static_cast<const RObject*>(Src)->GetClass();
+            if (!ClassInfo)
+            {
+                return nullptr;
+            }
+            return static_cast<To*>(ClassInfo->GetInterfaceAddress(
+                const_cast<RObject*>(static_cast<const RObject*>(Src)),
+                To::StaticInterfaceName()));
+        }
+        else
+        {
+            return static_cast<To*>(Src);
+        }
+    }
 }
 
 template <typename To, typename From>
 const To* Cast(const From* Src)
 {
-    static_assert(std::is_base_of_v<RObject, To>, "Cast<To> target must inherit from RObject!");
-    if (!Src)
-    {
-        return nullptr;
-    }
-    return Src->template IsA<To>() ? static_cast<const To*>(Src) : nullptr;
+    return Cast<To>(const_cast<From*>(Src));
 }
+
 
 // ==============================================================================
 // Object creation. This is the only creation function game code needs.
@@ -195,7 +230,9 @@ struct TObjectRegistrar
             // VENGINE_CURRENT_MODULE_NAME is expanded in the module that compiled this copy of the
             // registrar, which is exactly the module that owns this entry. Registering is
             // idempotent; unregistering only removes metadata this module owns.
-            []() { FObjectRegistry::Get().UnregisterClass<TClass>(VENGINE_CURRENT_MODULE_NAME); }
+            []() { FObjectRegistry::Get().UnregisterClass<TClass>(VENGINE_CURRENT_MODULE_NAME); },
+            [](const FString& ModuleName) -> bool {return FObjectRegistry::Get().RegisterClass<TClass>(ModuleName) != EClassRegistrationResult::Failed;
+}
         });
     }
 };
@@ -219,3 +256,20 @@ public: \
     friend class FObjectRegistry; \
 private: \
     inline static TObjectRegistrar<ClassName> AutoRegistrar{};
+
+// Declares the interfaces this class wants to be queryable with Cast<TInterface>(). Place it
+// directly after RCLASS:
+//
+//     RCLASS(WDevice)
+//     RIMPLEMENTS(IMySensor, IMyRadio)
+//
+// Only needed for interfaces you query by type; calling methods through a pointer you already
+// hold does not need it. Listing an interface the class does not inherit is a compile error.
+//
+// A subclass inherits its parent's list, so it does not repeat it. A subclass that adds an
+// interface of its own writes RIMPLEMENTS with only the new ones; the parent's remain reachable
+// through the class chain.
+#define RIMPLEMENTS(...) \
+public: \
+    using InterfaceTypes = TInterfaceList<__VA_ARGS__>; \
+private:

@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include "CoreAPI.h"
+#include "Object/Interface.h"
 #include "Containers/String.h"
 #include "Containers/Map.h"
+#include "Containers/Array.h"
 #include <cstdint>
 #include <type_traits>
 
@@ -9,6 +11,20 @@
 
 class RObject;
 class FModuleManager;
+
+// Result of a class registration.
+//
+// Registered and AlreadyRegistered are both success: a class declared in a header is
+// compiled into every module that includes it, so the same registration legitimately
+// arrives more than once and the extra copies must be accepted and ignored. The
+// distinction matters for one thing only: interfaces are attached to the class exactly
+// once, by the call that actually created the metadata.
+enum class EClassRegistrationResult : uint8_t
+{
+    Registered,
+    AlreadyRegistered,
+    Failed
+};
 
 struct FClassInfo
 {
@@ -19,6 +35,10 @@ struct FClassInfo
     RObject* ClassDefaultObject = nullptr;
     TFunction<RObject*()> Factory;
     TFunction<void(RObject*)> CdoDeleter;
+
+    // Interfaces the class declared with RIMPLEMENTS(). Empty for most classes.
+    // Appended exactly once, before the default object is constructed.
+    TArray<FImplementedInterface> Interfaces;
 
     // Objects of this class created outside of a constructor (NewObject<T>() outside any
     // construction). These always block the class (and its module) from being unregistered.
@@ -45,7 +65,99 @@ struct FClassInfo
         }
         return false;
     }
+
+    // Looks in this class first, then in its super classes. The walk is what makes a
+    // subclass inherit its parent's interfaces without re-listing them: the parent's
+    // thunk casts RObject* to the parent, which is a plain upcast for a child instance.
+    const FImplementedInterface* FindInterface(const char* InterfaceName) const
+    {
+        for (const FClassInfo* Current = this; Current; Current = Current->SuperClass)
+        {
+            for (const FImplementedInterface& Entry : Current->Interfaces)
+            {
+                if (Entry.Name == InterfaceName)
+                {
+                    return &Entry;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    // nullptr when the class (and its bases) does not implement the interface.
+    void* GetInterfaceAddress(RObject* Object, const char* InterfaceName) const
+    {
+        const FImplementedInterface* Entry = FindInterface(InterfaceName);
+        return (Entry && Entry->GetAddress) ? Entry->GetAddress(Object) : nullptr;
+    }
 };
+
+// Appends one interface to a class's list, ignoring a duplicate name (interface diamonds).
+//
+// Defined in Core on purpose. The name is stored in an FString, and the buffer must be
+// allocated and freed by the same module. If this were inline, the FString would be built
+// in the module that registers the class and freed in Core when the class is removed, which
+// is two different allocators. Here the FString is built and freed by Core in both cases.
+Core_API void AddClassInterface(FClassInfo& Info, const char* InterfaceName, void* (*GetAddress)(RObject*));
+
+namespace InterfaceRegistrationDetail
+{
+    // Object* -> TInterface*. Only the class's own translation unit can compute this offset.
+    // The registry calls it for objects whose exact class is TClass or a subclass of it.
+    template <typename TClass, typename TInterface>
+    void* TInterfaceAddressThunk(RObject* Object)
+    {
+        return static_cast<TInterface*>(static_cast<TClass*>(Object));
+    }
+
+    template <typename TClass, typename TInterface>
+    void TAddInterfaceOfType(FClassInfo& Info);
+
+    // Expands an interface's InterfaceBases list. A non-template struct specialised on
+    // TInterfaceList is the C++20 way to iterate a parameter pack without a helper lambda.
+    template <typename TClass, typename TList>
+    struct TInterfaceBasesAttacher;
+
+    template <typename TClass, typename... TInterfaces>
+    struct TInterfaceBasesAttacher<TClass, TInterfaceList<TInterfaces...>>
+    {
+        static void Attach(FClassInfo& Info)
+        {
+            (TAddInterfaceOfType<TClass, TInterfaces>(Info), ...);
+        }
+    };
+
+    template <typename TClass, typename TInterface>
+    void TAddInterfaceOfType(FClassInfo& Info)
+    {
+        static_assert(
+            std::is_base_of_v<TInterface, TClass>,
+            "RIMPLEMENTS()/RINTERFACE() lists an interface that this class does not inherit."
+        );
+
+        // Catches private and ambiguous inheritance with a readable error instead of a
+        // pointer pointing at the wrong subobject.
+        static_assert(
+            std::is_convertible_v<TClass*, TInterface*>,
+            "Interface base is private or ambiguous. Inherit it publicly and unambiguously, "
+            "e.g. 'class WFoo : public RObject, public IFoo'."
+        );
+
+        AddClassInterface(Info, TInterface::StaticInterfaceName(), &TInterfaceAddressThunk<TClass, TInterface>);
+
+        // Extending an interface is a promise to implement its bases too.
+        if constexpr (requires { typename TInterface::InterfaceBases; })
+        {
+            TInterfaceBasesAttacher<TClass, typename TInterface::InterfaceBases>::Attach(Info);
+        }
+    }
+
+    template <typename TClass>
+    void TAttachClassInterfaces(FClassInfo& Info)
+    {
+        TInterfaceBasesAttacher<TClass, typename TClass::InterfaceTypes>::Attach(Info);
+    }
+}
 
 class Core_API FObjectRegistry
 {
@@ -65,14 +177,19 @@ public:
     // legitimately arrives more than once. A repeated name with a DIFFERENT base class is a real
     // collision between two classes and is rejected.
     //
-    // Returns false only for a rejected registration (empty factory, or a name collision).
+    // AttachInterfaces is called once, after the metadata exists and BEFORE the default object
+    // is constructed, so a default object constructor can Cast<Interface>(this) like any other
+    // object. It is null for classes that declare no interfaces.
+    //
+    // Returns Failed only for a rejected registration (empty factory, or a name collision).
     // Rethrows if the default object constructor throws, after rolling back.
-    bool RegisterClass(
+    EClassRegistrationResult RegisterClass(
         const FString& Name,
         const FString& SuperName,
         const FString& ModuleName,
         TFunction<RObject*()> Factory,
-        TFunction<void(RObject*)> CdoDeleter
+        TFunction<void(RObject*)> CdoDeleter,
+        void (*AttachInterfaces)(FClassInfo&) = nullptr
     );
 
     // Destroys the class's default object first, then removes the metadata, but only if this
@@ -84,19 +201,27 @@ public:
     // ModuleName is required on purpose: ownership decides which module may unregister the
     // class, and a default like "Unknown" would make that decision wrong.
     template <typename TClass>
-    bool RegisterClass(const FString& ModuleName)
+    EClassRegistrationResult RegisterClass(const FString& ModuleName)
     {
         FString SuperName = "";
         if constexpr (!std::is_same_v<TClass, RObject>)
         {
             SuperName = TClass::Super::StaticClassName();
         }
+
+        void (*AttachInterfaces)(FClassInfo&) = nullptr;
+        if constexpr (requires { typename TClass::InterfaceTypes; })
+        {
+            AttachInterfaces = &InterfaceRegistrationDetail::TAttachClassInterfaces<TClass>;
+        }
+
         return RegisterClass(
             TClass::StaticClassName(),
             SuperName,
             ModuleName,
             []() -> RObject* { return new TClass(); },
-            [](RObject* Ptr) { delete static_cast<TClass*>(Ptr); }
+            [](RObject* Ptr) { delete static_cast<TClass*>(Ptr); },
+            AttachInterfaces
         );
     }
 

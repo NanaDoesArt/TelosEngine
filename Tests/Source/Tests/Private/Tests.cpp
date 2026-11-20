@@ -6,6 +6,7 @@
 #include "Modules/ModuleManager.h"
 #include <stdexcept>
 #include <cstdlib>
+#include <cstring>
 
 namespace
 {
@@ -60,6 +61,79 @@ namespace
             throw std::runtime_error("Simulated CDO constructor failure");
         }
     };
+    
+    // Interfaces are plain abstract classes. RINTERFACE gives one a name the registry can compare;
+    // RIMPLEMENTS on the implementing class makes Cast<TInterface>() possible.
+    class ITestSensor
+    {
+    public:
+        RINTERFACE(ITestSensor)
+        virtual ~ITestSensor() = default;
+        virtual int32_t Reading() const = 0;
+    };
+
+    class ITestNamed
+    {
+    public:
+        RINTERFACE(ITestNamed)
+        virtual ~ITestNamed() = default;
+        virtual const char* Label() const = 0;
+    };
+
+    class FTestDevice : public RObject, public ITestSensor, public ITestNamed
+    {
+        RCLASS(FTestDevice)
+        RIMPLEMENTS(ITestSensor, ITestNamed)
+    public:
+        int32_t Reading() const override { return 77; }
+        const char* Label() const override { return "device"; }
+    };
+
+    // No RIMPLEMENTS: the parent's list is inherited, and the cast still resolves.
+    class FTestDeviceChild : public FTestDevice
+    {
+        RCLASS(FTestDeviceChild)
+    public:
+        int32_t Reading() const override { return 88; }
+    };
+    
+    // Three-level class chain. The middle class adds nothing; the leaf adds an interface of its
+    // own while its RIMPLEMENTS *shadows* the parent's list, to prove the parent's interfaces stay
+    // reachable through the class chain.
+    class ITestSolid
+    {
+    public:
+        RINTERFACE(ITestSolid)
+        virtual ~ITestSolid() = default;
+        virtual const char* Solid() const = 0;
+    };
+
+    class FTestVehicle : public RObject, public ITestSensor
+    {
+        RCLASS(FTestVehicle)
+        RIMPLEMENTS(ITestSensor)
+    public:
+        int32_t Reading() const override { return 1; }
+        virtual const char* Kind() const { return "vehicle"; }
+    };
+
+    class FTestCar : public FTestVehicle
+    {
+        RCLASS(FTestCar)
+    public:
+        const char* Kind() const override { return "car"; }
+    };
+
+    class FTestSportsCar : public FTestCar, public ITestSolid
+    {
+        RCLASS(FTestSportsCar)
+        RIMPLEMENTS(ITestSolid)
+    public:
+        int32_t Reading() const override { return 3; }
+        const char* Solid() const override { return "sports"; }
+        const char* Kind() const override { return "sports car"; }
+    };
+    
 }
 
 class FTestsModule : public IModuleInterface
@@ -202,6 +276,90 @@ public:
             TWeakObjectPtr<FTestLeafEntity> WeakEscaped = Escaped;
             const bool bForeignReleased = FModuleManager::Get().ReleaseModuleObjects("Tests_EscapeHatch");
             VerifyCheck(bForeignReleased && !WeakEscaped.IsValid(), "EscapeCleanup", "Destroying the foreign scope destroyed the escaped object.");
+        }
+        
+        // 8. Interfaces: RObject* -> interface* needs a real pointer adjustment
+        {
+            FTestDevice* Device = NewObject<FTestDevice>();
+            VerifyCheck(Device != nullptr, "InterfaceDeviceCreated", "Object implementing two interfaces created.");
+
+            ITestSensor* Sensor = Cast<ITestSensor>(Device);
+            ITestNamed* Named = Cast<ITestNamed>(Device);
+            VerifyCheck(Sensor != nullptr && Sensor->Reading() == 77, "InterfaceCastFirst", "Cast to the first interface resolved and dispatched.");
+            VerifyCheck(Named != nullptr && std::strcmp(Named->Label(), "device") == 0, "InterfaceCastSecond", "Cast to the second interface resolved and dispatched.");
+            VerifyCheck(
+                static_cast<void*>(Sensor) != static_cast<void*>(Named),
+                "InterfaceAddressesDiffer",
+                "The two interfaces sit at different addresses, so the thunk performs a real adjustment."
+            );
+
+            RObject* AsObject = Device;
+            VerifyCheck(Cast<ITestSensor>(AsObject) == Sensor, "InterfaceCastFromBase", "Casting from RObject* reaches the same interface subobject.");
+            VerifyCheck(Cast<FTestDevice>(AsObject) == Device, "ClassCastStillWorks", "Class casts still work after the interface change.");
+
+            FTestLeafEntity* Plain = NewObject<FTestLeafEntity>();
+            VerifyCheck(Cast<ITestSensor>(Plain) == nullptr, "InterfaceNotImplemented", "An object without the interface casts to nullptr.");
+
+            FTestDeviceChild* Child = NewObject<FTestDeviceChild>();
+            ITestSensor* ChildSensor = Cast<ITestSensor>(Child);
+            VerifyCheck(
+                ChildSensor != nullptr && ChildSensor->Reading() == 88,
+                "InterfaceInherited",
+                "A subclass inherits its parent's interfaces and dispatches to its own override."
+            );
+
+            Destroy(Child);
+            Destroy(Plain);
+            Destroy(Device);
+        }
+        
+         // 9. Subclassing RCLASS classes: class chain, virtual dispatch, interface inheritance
+        {
+            const FClassInfo* VehicleClass = Registry.FindClass("FTestVehicle");
+            const FClassInfo* CarClass = Registry.FindClass("FTestCar");
+            const FClassInfo* SportsClass = Registry.FindClass("FTestSportsCar");
+            VerifyCheck(
+                SportsClass != nullptr && SportsClass->SuperClass == CarClass && CarClass->SuperClass == VehicleClass,
+                "ClassChainLinked",
+                "Three-level class chain resolved through FClassInfo::SuperClass."
+            );
+
+            FTestSportsCar* Sports = NewObject<FTestSportsCar>();
+            VerifyCheck(Sports != nullptr && std::strcmp(Sports->GetClassName(), "FTestSportsCar") == 0, "SubclassCreated", "Leaf class constructed.");
+
+            FTestVehicle* AsVehicle = Cast<FTestVehicle>(Sports);
+            FTestCar* AsCar = Cast<FTestCar>(Sports);
+            VerifyCheck(
+                AsVehicle != nullptr && AsCar != nullptr && AsCar == static_cast<FTestCar*>(AsVehicle),
+                "UpcastThroughChain",
+                "Casts to both ancestors resolve to the same subobject."
+            );
+            VerifyCheck(std::strcmp(AsVehicle->Kind(), "sports car") == 0, "VirtualDispatchThroughBase", "Calling through the base pointer dispatches to the leaf override.");
+
+            RObject* AsObject = Sports;
+            VerifyCheck(Sports->IsA<FTestVehicle>() && Sports->IsA<FTestCar>() && Sports->IsA<RObject>(), "IsAWalkedUpChain", "IsA<> is true for every ancestor.");
+            VerifyCheck(Cast<FTestCar>(AsObject) == static_cast<FTestCar*>(Sports), "ClassCastFromBase", "Class cast from RObject* reaches the leaf's ancestor subobject.");
+            VerifyCheck(Cast<FTestSportsCar>(AsObject) == Sports, "ClassCastExactLeaf", "Class cast to the exact leaf class succeeds.");
+
+            FTestCar* Car = NewObject<FTestCar>();
+            VerifyCheck(Cast<FTestSportsCar>(static_cast<RObject*>(Car)) == nullptr, "DowncastRejected", "Casting a real FTestCar to FTestSportsCar returns nullptr.");
+            VerifyCheck(Cast<FTestVehicle>(Car) == static_cast<FTestVehicle*>(Car), "SiblingUpcast", "An instance of the middle class casts up to its base.");
+
+            // The leaf's RIMPLEMENTS shadows the parent's list. The parent's interface must still be
+            // found on the leaf by walking the class chain, and dispatch to the leaf override.
+            ITestSensor* LeafSensor = Cast<ITestSensor>(Sports);
+            ITestSolid* LeafSolid = Cast<ITestSolid>(Sports);
+            VerifyCheck(LeafSensor != nullptr && LeafSensor->Reading() == 3, "InheritedInterfaceFromChain", "Interface declared by the base class resolves on the leaf and dispatches to the leaf override.");
+            VerifyCheck(LeafSolid != nullptr && std::strcmp(LeafSolid->Solid(), "sports") == 0, "OwnInterfaceOnLeaf", "Interface declared by the leaf resolves on the leaf.");
+            VerifyCheck(Cast<ITestSolid>(Car) == nullptr, "InterfaceNotOnSibling", "An interface added by the leaf is not visible on its parent.");
+            VerifyCheck(
+                LeafSensor == static_cast<ITestSensor*>(Sports),
+                "InheritedInterfaceSameAddress",
+                "The inherited interface resolves to the same subobject the compiler would compute."
+            );
+
+            Destroy(Car);
+            Destroy(Sports);
         }
 
         VENGINE_LOG(LogCore, Info, "[Tests] All in-module assertions PASSED!");

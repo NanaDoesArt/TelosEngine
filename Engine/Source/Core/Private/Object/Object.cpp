@@ -548,6 +548,59 @@ const FClassInfo* FObjectRegistry::FindClass(const FString& Name) const
     return Classes.Find(Name);
 }
 
+// ==============================================================================
+// Interfaces
+// ==============================================================================
+
+void FObjectRegistry::AddInterface(const FString& ClassName, FImplementedInterface Entry)
+{
+    CheckGameThread("AddInterface");
+
+    FClassInfo* Info = Classes.Find(ClassName);
+    if (!Info || !Entry.Name || !Entry.Thunk)
+    {
+        return;
+    }
+
+    // Same class, registered again from another module that includes its header. Keep the entry
+    // that is already there: its thunk lives in the module that owns the class, so it cannot be
+    // replaced by code from a module that may unload while the class still exists.
+    if (Info->FindInterface(Entry.Name))
+    {
+        VENGINE_LOG(
+            LogCore,
+            Verbose,
+            "[ObjectRegistry] '{}' already exposes interface '{}'; keeping the existing thunk.",
+            ClassName.CStr(),
+            Entry.Name
+        );
+        return;
+    }
+
+    Info->Interfaces.Add(Entry);
+}
+
+void* FObjectRegistry::GetInterfaceAddress(RObject* Object, const char* InterfaceName) const
+{
+    if (!Object || !InterfaceName)
+    {
+        return nullptr;
+    }
+
+    // Walk the class chain: an interface implemented by a base class is also implemented by every
+    // subclass, and the thunk found on the base is still correct for a subclass instance because
+    // the instance really is an instance of that base.
+    for (const FClassInfo* Info = Object->GetClass(); Info; Info = Info->SuperClass)
+    {
+        if (const FImplementedInterface* Entry = Info->FindInterface(InterfaceName))
+        {
+            return Entry->Thunk(Object);
+        }
+    }
+
+    return nullptr;
+}
+
 bool FObjectRegistry::HasLiveInstancesForModule(const FString& ModuleName, int32_t* OutCount) const
 {
     CheckGameThread("HasLiveInstancesForModule");
