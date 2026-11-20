@@ -1,4 +1,5 @@
 ﻿#pragma once
+
 #include "CoreAPI.h"
 #include "Modules/ModuleInterface.h"
 #include "Containers/String.h"
@@ -27,23 +28,15 @@ class Core_API FModuleManager
 
     bool IsModuleLoaded(const FString& ModuleName) const;
 
-    // Number of modules currently loaded, including ones that are still resident because their
-    // objects survived elsewhere. O(1); for dashboards and diagnostics.
     int32_t GetLoadedModuleCount() const { return LoadedModules.Num(); }
 
-    // ==========================================================================
-    // Module lifetime scope.
-    // The scope is the root of every object a module creates with NewObjectInModule().
-    // It is created on first use (which can be during the DLL's static initialisation,
-    // before LoadModule knows about the module) and released when the module unloads.
-    // This map is the ONLY list of module scopes in the process: the object registry
-    // creates and destroys scopes but never remembers them.
-    // ==========================================================================
+    // The scope is the root of every object a module creates with
+    // NewObjectInModule(). It may be created during DLL static initialization,
+    // before LoadModule has inserted a record for the module.
     RObject* GetOrCreateModuleScope(const FString& ModuleName);
 
-    // Destroys the module's scope, then reports whether any instance of the module's
-    // classes survived elsewhere. Returns false if the DLL must stay loaded.
-    // Idempotent: safe to call when no scope exists.
+    // Destroys the module scope and reports whether instances of its classes
+    // still exist elsewhere. The DLL must remain loaded if any survive.
     bool ReleaseModuleObjects(const FString& ModuleName);
 
     private:
@@ -52,7 +45,29 @@ class Core_API FModuleManager
         void* Handle = nullptr;
         IModuleInterface* Instance = nullptr;
         EModuleState State = EModuleState::Loading;
+
         bool bShutdownExecuted = false;
+        bool bShutdownFailed = false;
+        bool bFinalizationExecuted = false;
+        bool bUnloadInProgress = false;
+    };
+    struct FUnloadGuard
+    {
+        FModuleManager& Manager;
+        const FString& ModuleName;
+
+        FUnloadGuard(FModuleManager& InManager, const FString& InModuleName)
+            : Manager(InManager), ModuleName(InModuleName)
+        {
+        }
+
+        ~FUnloadGuard()
+        {
+            if (FModuleRecord* Record = Manager.LoadedModules.Find(ModuleName))
+            {
+                Record->bUnloadInProgress = false;
+            }
+        }
     };
 
     TMap<FString, FModuleRecord> LoadedModules;

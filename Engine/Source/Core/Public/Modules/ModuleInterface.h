@@ -1,5 +1,6 @@
-﻿#pragma once
+﻿
 #pragma once
+
 #include "CoreAPI.h"
 #include "HAL/Memory.h"
 #include "Containers/Array.h"
@@ -22,21 +23,24 @@ public:
     virtual ~IModuleInterface() = default;
 
     // Establishes foundational registration required by automatic classes.
-    // Ordinary modules should normally leave this unchanged.
     virtual bool PrepareModule() { return true; }
 
-    // Must tolerate partial startup when ShutdownModule() is called on failure
+    // May be called after either full or partial StartupModule().
+    // The manager invokes this at most once.
     virtual bool StartupModule() { return true; }
 
-    // Must be idempotent and safe to call after either full or partial StartupModule()
+    // Author-defined shutdown. Called once, before object destruction.
     virtual void ShutdownModule() {}
+
+    // Called after the manager has destroyed the module scope and confirmed
+    // that no instances of this module's classes remain.
+    //
+    // Implementations should be retry-safe if they can return false.
+    virtual bool FinalizeModule() { return true; }
 };
 
-// Destroys the calling module's lifetime scope and reports whether any instance of its classes
-// survived elsewhere. Called by IMPLEMENT_MODULE's wrapper between the author's ShutdownModule()
-// and class unregistration, so a module's objects always die while class metadata and the DLL are
-// still alive. Returns false when another module still owns objects of this module's classes; the
-// wrapper then leaves the classes registered and the module manager refuses to free the library.
+// Destroys the calling module's lifetime scope and reports whether any instance
+// of its classes survived elsewhere.
 Core_API bool ReleaseModuleObjects(const char* ModuleName);
 
 struct FModuleClassRegistry
@@ -69,30 +73,48 @@ struct FModuleClassRegistry
 
         for (int32_t i = RegisteredCount; i < Entries.Num(); ++i)
         {
-            if (Entries[i].Register && !Entries[i].Register(ModuleName))
+            if (Entries[i].Register &&
+                !Entries[i].Register(ModuleName))
             {
-                // Keep successful registrations until deferred shutdown.
-                // The wrapper cleans module resources before unregistering classes.
+                // Successfully registered entries remain registered.
+                // Deferred shutdown will clean them up.
                 return false;
             }
+
             ++RegisteredCount;
         }
+
         return true;
     }
 
-    static void UnregisterAll()
+    static bool UnregisterAll()
     {
         TArray<FEntry>& Entries = GetEntries();
         int32_t& RegisteredCount = GetRegisteredCount();
 
-        for (int32_t i = RegisteredCount - 1; i >= 0; --i)
+        // Unregister in reverse registration order.
+        // Decrement the count after each successful callback so a later
+        // attempt resumes at the first entry that was not unregistered.
+        while (RegisteredCount > 0)
         {
-            if (Entries[i].Unregister)
+            const int32_t Index = RegisteredCount - 1;
+
+            try
             {
-                Entries[i].Unregister();
+                if (Entries[Index].Unregister)
+                {
+                    Entries[Index].Unregister();
+                }
             }
+            catch (...)
+            {
+                return false;
+            }
+
+            --RegisteredCount;
         }
-        RegisteredCount = 0;
+
+        return true;
     }
 };
 
@@ -121,12 +143,12 @@ struct FModuleClassRegistry
         if (!Ptr) throw std::bad_alloc(); \
         return Ptr; \
     } \
-    void operator delete(void* ptr) noexcept                        { FMemory::Free(ptr); } \
-    void operator delete[](void* ptr) noexcept                      { FMemory::Free(ptr); } \
-    void operator delete(void* ptr, size_t) noexcept                { FMemory::Free(ptr); } \
-    void operator delete[](void* ptr, size_t) noexcept              { FMemory::Free(ptr); } \
-    void operator delete(void* ptr, std::align_val_t) noexcept      { FMemory::Free(ptr); } \
-    void operator delete[](void* ptr, std::align_val_t) noexcept    { FMemory::Free(ptr); } \
+    void operator delete(void* ptr) noexcept                   { FMemory::Free(ptr); } \
+    void operator delete[](void* ptr) noexcept                 { FMemory::Free(ptr); } \
+    void operator delete(void* ptr, size_t) noexcept           { FMemory::Free(ptr); } \
+    void operator delete[](void* ptr, size_t) noexcept         { FMemory::Free(ptr); } \
+    void operator delete(void* ptr, std::align_val_t) noexcept { FMemory::Free(ptr); } \
+    void operator delete[](void* ptr, std::align_val_t) noexcept { FMemory::Free(ptr); } \
     class FAutoRegisteredModuleWrapper : public ModuleClass \
     { \
     public: \
@@ -142,14 +164,13 @@ struct FModuleClassRegistry
             } \
             return ModuleClass::StartupModule(); \
         } \
-         void ShutdownModule() override \
+        void ShutdownModule() override \
         { \
             ModuleClass::ShutdownModule(); \
-            if (!ReleaseModuleObjects(VENGINE_CURRENT_MODULE_NAME)) \
-            { \
-                return; \
-            } \
-            FModuleClassRegistry::UnregisterAll(); \
+        } \
+        bool FinalizeModule() override \
+        { \
+            return FModuleClassRegistry::UnregisterAll(); \
         } \
     }; \
     extern "C" VENGINE_DLLEXPORT IModuleInterface* CreateModule() \
