@@ -161,7 +161,36 @@ IModuleInterface* FModuleManager::LoadModule(const FString& ModuleName)
             ModuleName.CStr()
         );
 
-        ReleaseModuleObjects(ModuleName);
+        if (!ReleaseModuleObjects(ModuleName))
+        {
+            VENGINE_LOG(
+                LogCore,
+                Error,
+                "[ModuleManager] Retaining failed module '{}' because "
+                "module-owned objects are still alive. Cleanup can be retried later.",
+                ModuleName.CStr()
+            );
+
+            // Keep the DLL handle tracked so UnloadModule() can retry cleanup.
+            // There is no module instance because CreateModule() did not
+            // successfully provide one.
+            LoadedModules.Add(
+                ModuleName,
+                {
+                    Handle,
+                    nullptr,
+                    EModuleState::Failed,
+                    false,
+                    false,
+                    false,
+                    false
+                }
+            );
+
+            LoadOrder.Add(ModuleName);
+            return nullptr;
+        }
+
         FPlatformProcess::FreeDllHandle(Handle);
         return nullptr;
     };
@@ -308,51 +337,61 @@ bool FModuleManager::UnloadModule(const FString& ModuleName)
     void* Handle = InitialRecord->Handle;
 
     // Phase 1: run author shutdown exactly once.
-    if (!InitialRecord->bShutdownExecuted)
+    //
+    // A null instance means CreateModule() failed before producing a
+    // module object. There is no author shutdown callback to invoke.
+    if (Instance)
     {
-        InitialRecord->bShutdownExecuted = true;
-        InitialRecord->State = EModuleState::Stopping;
+        if (!InitialRecord->bShutdownExecuted)
+        {
+            InitialRecord->bShutdownExecuted = true;
+            InitialRecord->State = EModuleState::Stopping;
 
-        try
-        {
-            Instance->ShutdownModule();
+            try
+            {
+                Instance->ShutdownModule();
+            }
+            catch (...)
+            {
+                if (FModuleRecord* Record = LoadedModules.Find(ModuleName))
+                {
+                    if (Record->Instance == Instance)
+                    {
+                        Record->bShutdownFailed = true;
+                    }
+                }
+
+                VENGINE_LOG(
+                    LogCore,
+                    Error,
+                    "[ModuleManager] ShutdownModule() threw for '{}'. "
+                    "Keeping the DLL loaded because cleanup cannot be verified.",
+                    ModuleName.CStr()
+                );
+                return false;
+            }
         }
-        catch (...)
+        else
         {
-            // Reacquire the record; callbacks may have mutated the map.
+            // A retry is permitted only after a previous shutdown completed.
             if (FModuleRecord* Record = LoadedModules.Find(ModuleName))
             {
-                if (Record->Instance == Instance)
+                if (Record->Instance != Instance)
                 {
-                    Record->bShutdownFailed = true;
+                    return false;
                 }
+                Record->State = EModuleState::Stopping;
             }
-
-            VENGINE_LOG(
-                LogCore,
-                Error,
-                "[ModuleManager] ShutdownModule() threw for '{}'. "
-                "Keeping the DLL loaded because cleanup cannot be verified.",
-                ModuleName.CStr()
-            );
-            return false;
+            else
+            {
+                return false;
+            }
         }
     }
     else
     {
-        // A retry is permitted only after a previous shutdown completed.
-        if (FModuleRecord* Record = LoadedModules.Find(ModuleName))
-        {
-            if (Record->Instance != Instance)
-            {
-                return false;
-            }
-            Record->State = EModuleState::Stopping;
-        }
-        else
-        {
-            return false;
-        }
+        // Failed before a module instance was created.
+        InitialRecord->State = EModuleState::Stopping;
     }
 
     // Reacquire after the callback. Do not assume the original map entry
@@ -390,7 +429,7 @@ bool FModuleManager::UnloadModule(const FString& ModuleName)
         return false;
     }
 
-    if (!Record->bFinalizationExecuted)
+    if (Instance && !Record->bFinalizationExecuted)
     {
         try
         {
@@ -430,7 +469,10 @@ bool FModuleManager::UnloadModule(const FString& ModuleName)
     // Phase 4: destroy the module instance while its DLL is still resident.
     // The record remains in Stopping during its destructor, preventing a
     // reentrant LoadModule() from loading a second copy.
-    delete Instance;
+    if (Instance)
+    {
+        delete Instance;
+    }
 
     Record = LoadedModules.Find(ModuleName);
     if (!Record || Record->Instance != Instance || Record->Handle != Handle)
