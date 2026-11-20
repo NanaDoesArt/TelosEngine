@@ -1,0 +1,120 @@
+[18:51:03.929] [info] [LogCore] [Launch] Engine PreInit...
+[18:51:03.930] [info] [LogCore] [ThreadPool] Initialized with 11 worker threads.
+[18:51:03.930] [info] [LogCore] [Launch] Engine Init: Loading boot modules...
+[18:51:03.930] [info] [LogCore] [Engine_Core] Preparing object registry...
+[18:51:03.930] [info] [LogCore] [ModuleManager] Loaded module: Engine_Core
+[18:51:03.930] [info] [LogCore] [Engine_Launch] Module started!
+[18:51:03.930] [info] [LogCore] [ModuleManager] Loaded module: Engine_Launch
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: RObject (Super: None, Module: VEngine.Bootstrap)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FObjectScope (Super: RObject, Module: VEngine.Bootstrap)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestLeafEntity (Super: RObject, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FNestedConstructorEntity (Super: RObject, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestDevice (Super: RObject, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestDeviceChild (Super: FTestDevice, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestVehicle (Super: RObject, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestCar (Super: FTestVehicle, Module: Tests_Tests)
+[18:51:03.931] [info] [LogCore] [ObjectRegistry] Registered: FTestSportsCar (Super: FTestCar, Module: Tests_Tests)
+[18:51:03.932] [info] [LogCore] [Tests] Starting Core & Object Lifecycle Test Suite...
+[18:51:03.932] [debug] [LogCore] [ObjectRegistry] Created lifetime scope 'Tests_Tests' (ID: 11)
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (StartupCreation): NewObject<FTestLeafEntity>() succeeded in StartupModule().
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (WeakPtrValid): TWeakObjectPtr resolves live object.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (WeakPtrInvalidated): TWeakObjectPtr invalidated immediately on Destroy().
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (ParentCreation): Parent creation succeeded.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (ParentChildOwnership): NewObject<T>(Parent) parented child to Parent.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (ParentChildrenList): Parent recorded 1 owned child.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (CascadeDestroy): Destroying Parent destroyed Child and invalidated both weak pointers.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedClassesRegistered): Both nested-construction classes are registered.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedCtorOuter): Outer object constructed.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedCtorChild): Child constructed inside Outer constructor via NewObject().
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedCtorExactType): Nested child recorded exact FTestLeafEntity class rather than Outer class.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedCtorAccounting): Parent and child incremented their own class counts.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (NestedCtorAccountingRestored): Both class counts returned to their original values.
+[18:51:03.932] [info] [LogCore] [CoreTests] PASSED (ThrowingCdoCaught): Throwing CDO constructor exception propagated.
+[18:51:03.933] [info] [LogCore] [CoreTests] PASSED (ThrowingCdoRolledBack): Failed CDO registration rolled back class metadata.
+[18:51:03.933] [info] [LogCore] [CoreTests] PASSED (ScopedStateRestored): Normal NewObject() works after throwing CDO rollback.
+[18:51:03.933] [info] [LogCore] [CoreTests] PASSED (LiveCountRestored): Temporary objects left no live-instance count behind.
+[18:51:03.933] [debug] [LogCore] [ObjectRegistry] 'RObject' already registered by 'VEngine.Bootstrap'; ignoring duplicate registration from 'Tests_Tests'.
+[18:51:03.933] [info] [LogCore] [CoreTests] PASSED (DuplicateIgnored): Re-registering an identical class is accepted.
+[18:51:03.934] [info] [LogCore] [CoreTests] PASSED (DuplicateDidNotTakeOwnership): The original owner of 'RObject' kept ownership.
+[18:51:03.935] [error] [LogCore] [ObjectRegistry] Class name collision for 'FTestLeafEntity': module 'Tests_Tests' registered it with base 'RObject', module 'Tests_Tests' tried to register it with base 'FObjectScope'.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (NameCollisionRejected): A same-name/different-base collision is rejected.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (ScopeCreate): Module-scoped object created.
+[18:51:03.935] [debug] [LogCore] [ObjectRegistry] Lifetime scope 'Tests_Tests' is taking 1 object(s) with it.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (ScopeRelease): Releasing the module's objects succeeded with no survivors.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (ScopeReleaseDestroyed): Releasing the module scope destroyed the object it owned.
+[18:51:03.935] [debug] [LogCore] [ObjectRegistry] Created lifetime scope 'Tests_EscapeHatch' (ID: 20)
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (EscapeRoot): Foreign scope created.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (EscapeParented): Object parented outside its own module scope.
+[18:51:03.935] [error] [LogCore] [ModuleManager] 'Tests_Tests' still has 1 live object(s) after its scope was released. They belong to classes this module declared but are owned by another module, so the library must stay loaded and its classes must stay registered.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (EscapeBlocksRelease): ReleaseModuleObjects() reports survivors when an object escaped the scope.
+[18:51:03.935] [debug] [LogCore] [ObjectRegistry] Lifetime scope 'Tests_EscapeHatch' is taking 1 object(s) with it.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (EscapeCleanup): Destroying the foreign scope destroyed the escaped object.
+[18:51:03.935] [debug] [LogCore] [ObjectRegistry] Created lifetime scope 'Tests_Tests' (ID: 22)
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (InterfaceDeviceCreated): Object implementing two interfaces created.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (InterfaceCastFirst): Cast to the first interface resolved and dispatched.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (InterfaceCastSecond): Cast to the second interface resolved and dispatched.
+[18:51:03.935] [info] [LogCore] [CoreTests] PASSED (InterfaceAddressesDiffer): The two interfaces sit at different addresses, so the thunk performs a real adjustment.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InterfaceCastFromBase): Casting from RObject* reaches the same interface subobject.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (ClassCastStillWorks): Class casts still work after the interface change.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InterfaceNotImplemented): An object without the interface casts to nullptr.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InterfaceInherited): A subclass inherits its parent's interfaces and dispatches to its own override.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (ClassChainLinked): Three-level class chain resolved through FClassInfo::SuperClass.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (SubclassCreated): Leaf class constructed.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (UpcastThroughChain): Casts to both ancestors resolve to the same subobject.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (VirtualDispatchThroughBase): Calling through the base pointer dispatches to the leaf override.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (IsAWalkedUpChain): IsA<> is true for every ancestor.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (ClassCastFromBase): Class cast from RObject* reaches the leaf's ancestor subobject.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (ClassCastExactLeaf): Class cast to the exact leaf class succeeds.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (DowncastRejected): Casting a real FTestCar to FTestSportsCar returns nullptr.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (SiblingUpcast): An instance of the middle class casts up to its base.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InheritedInterfaceFromChain): Interface declared by the base class resolves on the leaf and dispatches to the leaf override.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (OwnInterfaceOnLeaf): Interface declared by the leaf resolves on the leaf.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InterfaceNotOnSibling): An interface added by the leaf is not visible on its parent.
+[18:51:03.936] [info] [LogCore] [CoreTests] PASSED (InheritedInterfaceSameAddress): The inherited interface resolves to the same subobject the compiler would compute.
+[18:51:03.937] [info] [LogCore] [ObjectRegistry] Registered: FInterfaceLifetimeProbe (Super: RObject, Module: Tests_InterfaceLifetimeTest)
+[18:51:03.937] [info] [LogCore] [ModuleManager] Loaded module: Tests_InterfaceLifetimeTest
+[18:51:03.937] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeFirstLoad): The fixture module loads successfully.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeClassRegistered): The fixture class is registered.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeThunkRegistered): The class metadata contains a valid interface thunk.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeCDO): The fixture class default object exists.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeCast): The CDO successfully casts to the interface.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeDispatch): The interface thunk reaches the correct virtual implementation.
+[18:51:03.938] [info] [LogCore] [ObjectRegistry] Unregistered: FInterfaceLifetimeProbe
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeFirstUnload): The fixture module unloads successfully.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeUnloaded): The module is no longer loaded.
+[18:51:03.938] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeMetadataRemoved): The fixture class metadata was removed during unload.
+[18:51:03.939] [info] [LogCore] [ObjectRegistry] Registered: FInterfaceLifetimeProbe (Super: RObject, Module: Tests_InterfaceLifetimeTest)
+[18:51:03.939] [info] [LogCore] [ModuleManager] Loaded module: Tests_InterfaceLifetimeTest
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeSecondLoad): The fixture module loads again successfully.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeClassRegistered): The fixture class is registered.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeThunkRegistered): The class metadata contains a valid interface thunk.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeCDO): The fixture class default object exists.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeCast): The CDO successfully casts to the interface.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeDispatch): The interface thunk reaches the correct virtual implementation.
+[18:51:03.939] [info] [LogCore] [ObjectRegistry] Unregistered: FInterfaceLifetimeProbe
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeSecondUnload): The fixture module unloads successfully a second time.
+[18:51:03.939] [info] [LogCore] [CoreTests] PASSED (InterfaceLifetimeSecondCleanup): The second unload also removes the class metadata.
+[18:51:03.939] [info] [LogCore] [Tests] All in-module assertions PASSED!
+[18:51:03.940] [info] [LogCore] [ModuleManager] Loaded module: Tests_Tests
+[18:51:03.940] [info] [LogCore] [ObjectRegistry] Registered: FFailingModValidPrefix (Super: RObject, Module: Tests_FailingModule)
+[18:51:03.940] [error] [LogCore] [ObjectRegistry] Class name collision for 'RObject': module 'VEngine.Bootstrap' registered it with base 'None', module 'Tests_FailingModule' tried to register it with base 'RObject'.
+[18:51:03.940] [error] [LogCore] [ModuleManager] StartupModule() failed for module: Tests_FailingModule. Retaining DLL until engine shutdown drains async tasks.
+[18:51:03.940] [error] [LogCore] [Launch] Fatal: Required boot module 'Tests_FailingModule' failed to load. Aborting startup.
+[18:51:03.940] [info] [LogCore] [Launch] Engine Exit: Draining async tasks & unloading modules...
+[18:51:03.940] [info] [LogCore] [ThreadPool] Drained and shut down cleanly.
+[18:51:03.942] [info] [LogCore] [FailingModuleTest] PASSED: Valid prefix class metadata preserved through deferred shutdown.
+[18:51:03.942] [info] [LogCore] [ObjectRegistry] Unregistered: FFailingModValidPrefix
+[18:51:03.942] [info] [LogCore] [CoreTests] PASSED (FailingModuleCleanupVerified): FailingModule prefix class was unregistered cleanly during deferred shutdown.
+[18:51:03.943] [info] [LogCore] [Tests] Test suite finished cleanly!
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestSportsCar
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestCar
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestVehicle
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestDeviceChild
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestDevice
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FNestedConstructorEntity
+[18:51:03.943] [info] [LogCore] [ObjectRegistry] Unregistered: FTestLeafEntity
+[18:51:03.943] [info] [LogCore] [Engine_Launch] Module shutting down!
+[18:51:03.943] [info] [LogCore] [Engine_Core] Module shutting down!
+[18:51:03.943] [info] [LogCore] [Launch] Engine stopped after 0 frame(s).
+
+Process finished with exit code 2
