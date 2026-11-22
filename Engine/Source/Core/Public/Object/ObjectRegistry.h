@@ -36,6 +36,14 @@ struct FClassInfo
     TFunction<RObject*()> Factory;
     TFunction<void(RObject*)> CdoDeleter;
 
+    // Compiler-computed layout of the class, captured by the translation unit that
+    // registered it. Every later registration of the same name compares against these:
+    // two modules that compiled different definitions of one class (stale headers, an ODR
+    // violation) disagree here, and the duplicate is rejected loudly instead of silently
+    // using the first module's definition for both.
+    uint32_t ClassSize = 0;
+    uint32_t ClassAlignment = 0;
+
     // Interfaces the class declared with RIMPLEMENTS(). Empty for most classes.
     // Appended exactly once, before the default object is constructed.
     TArray<FImplementedInterface> Interfaces;
@@ -181,7 +189,8 @@ public:
     // is constructed, so a default object constructor can Cast<Interface>(this) like any other
     // object. It is null for classes that declare no interfaces.
     //
-    // Returns Failed only for a rejected registration (empty factory, or a name collision).
+    // Returns Failed only for a rejected registration (empty factory, a name collision, or a
+    // layout mismatch between two modules that compiled the class differently).
     // Rethrows if the default object constructor throws, after rolling back.
     EClassRegistrationResult RegisterClass(
         const FString& Name,
@@ -189,14 +198,20 @@ public:
         const FString& ModuleName,
         TFunction<RObject*()> Factory,
         TFunction<void(RObject*)> CdoDeleter,
+        uint32_t ClassSize,
+        uint32_t ClassAlignment,
         void (*AttachInterfaces)(FClassInfo&) = nullptr
     );
 
-    // Destroys the class's default object first, then removes the metadata, but only if this
-    // module owns the class. Every other module's copy of the registrar is a no-op here.
-    // Fatal if ordinary instances exist, if a subclass still has objects, or if default objects
-    // of OTHER modules still hold objects of this class.
-    void UnregisterClass(const FString& Name, const FString& ModuleName);
+    // Removes the class's metadata, but only if this module owns the class. Every other module's
+    // copy of the registrar is a no-op here.
+    //
+    // Returns false, leaving everything untouched, when the class cannot go away yet: another
+    // registered class still names it as its base, ordinary instances exist, or default objects
+    // of other modules still hold objects of this class. A false return is retryable: the caller
+    // that is tearing a module down must keep the DLL loaded and try again once the blocking
+    // module is gone.
+    bool UnregisterClass(const FString& Name, const FString& ModuleName);
 
     // ModuleName is required on purpose: ownership decides which module may unregister the
     // class, and a default like "Unknown" would make that decision wrong.
@@ -221,14 +236,16 @@ public:
             ModuleName,
             []() -> RObject* { return new TClass(); },
             [](RObject* Ptr) { delete static_cast<TClass*>(Ptr); },
+            static_cast<uint32_t>(sizeof(TClass)),
+            static_cast<uint32_t>(alignof(TClass)),
             AttachInterfaces
         );
     }
 
     template <typename TClass>
-    void UnregisterClass(const FString& ModuleName)
+    bool UnregisterClass(const FString& ModuleName)
     {
-        UnregisterClass(TClass::StaticClassName(), ModuleName);
+        return UnregisterClass(TClass::StaticClassName(), ModuleName);
     }
 
     // Typed construction: rejects a null outer, nullptr RequiredBaseClass or incompatible classes

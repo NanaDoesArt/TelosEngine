@@ -1,5 +1,4 @@
-﻿
-#pragma once
+﻿#pragma once
 
 #include "CoreAPI.h"
 #include "HAL/Memory.h"
@@ -46,7 +45,10 @@ Core_API bool ReleaseModuleObjects(const char* ModuleName);
 struct FModuleClassRegistry
 {
     using FRegisterFn = bool(*)(const FString& ModuleName);
-    using FUnregisterFn = void(*)();
+
+    // Returns false when the entry cannot be removed yet (another registered class still
+    // derives from it). The DLL must stay loaded, and a later retry can finish the job.
+    using FUnregisterFn = bool(*)();
 
     struct FEntry
     {
@@ -92,26 +94,60 @@ struct FModuleClassRegistry
         TArray<FEntry>& Entries = GetEntries();
         int32_t& RegisteredCount = GetRegisteredCount();
 
-        // Unregister in reverse registration order.
-        // Decrement the count after each successful callback so a later
-        // attempt resumes at the first entry that was not unregistered.
+        // Entries are removed in reverse registration order, which normally puts a subclass
+        // before its base. That order is not guaranteed (static initialization order across
+        // translation units is arbitrary), and a class whose base is still registered refuses
+        // to unregister. Such entries are kept and retried after the rest of the pass, so a
+        // class chain of any depth converges within a few passes.
+        //
+        // A class that is still blocked at the end of a pass with no progress belongs to
+        // another loaded module. Report failure and keep the entries so the caller can retry
+        // after that module unloads; the caller must also keep this DLL loaded.
         while (RegisteredCount > 0)
         {
-            const int32_t Index = RegisteredCount - 1;
+            TArray<FEntry> Pending;
+            bool bProgress = false;
 
-            try
+            for (int32_t Index = RegisteredCount - 1; Index >= 0; --Index)
             {
-                if (Entries[Index].Unregister)
+                const FEntry& Entry = Entries[Index];
+                bool bUnregistered = true;
+
+                try
                 {
-                    Entries[Index].Unregister();
+                    if (Entry.Unregister)
+                    {
+                        bUnregistered = Entry.Unregister();
+                    }
+                }
+                catch (...)
+                {
+                    bUnregistered = false;
+                }
+
+                if (bUnregistered)
+                {
+                    bProgress = true;
+                }
+                else
+                {
+                    Pending.Add(Entry);
                 }
             }
-            catch (...)
+
+            if (Pending.Num() == 0)
+            {
+                RegisteredCount = 0;
+                return true;
+            }
+
+            Entries = Pending;
+            RegisteredCount = Pending.Num();
+
+            if (!bProgress)
             {
                 return false;
             }
-
-            --RegisteredCount;
         }
 
         return true;

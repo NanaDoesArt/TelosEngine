@@ -5,6 +5,7 @@
 #include "Modules/ModuleManager.h"
 #include "Containers/Array.h"
 #include "Containers/String.h"
+#include "Templates/TypeName.h"
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -42,8 +43,8 @@ public:
         return ClassInfo && ClassInfo->IsChildOf(TargetClass);
     }
 
-    // Note: the target class is looked up by name (one hash) because caching a FClassInfo*
-    // in a static would dangle if that class is ever unregistered and re-registered.
+    // Note: the target class is looked up by name (one hash) because caching a FClassInfo* in
+    // a static would dangle if that class is ever unregistered and re-registered.
     template <typename T>
     bool IsA() const
     {
@@ -116,10 +117,6 @@ public:
 
 // ==============================================================================
 // Safe Cross-DLL Cast<T>()
-// ==============================================================================
-
-// ==============================================================================
-// Safe Cross-DLL Cast<T>()
 //
 // Cast<To>() works for both kinds of target:
 //
@@ -173,7 +170,6 @@ const To* Cast(const From* Src)
 {
     return Cast<To>(const_cast<From*>(Src));
 }
-
 
 // ==============================================================================
 // Object creation. This is the only creation function game code needs.
@@ -234,9 +230,9 @@ struct TObjectRegistrar
 
             // VENGINE_CURRENT_MODULE_NAME is expanded in the module that compiled this copy
             // of the registrar, which is exactly the module that owns this entry.
-            []()
+            []() -> bool
             {
-                FObjectRegistry::Get().UnregisterClass<TClass>(
+                return FObjectRegistry::Get().UnregisterClass<TClass>(
                     VENGINE_CURRENT_MODULE_NAME
                 );
             }
@@ -254,12 +250,15 @@ struct TObjectRegistrar
 // One requirement remains: the declaring module needs at least one .cpp that includes the
 // header, or the compiler may never emit that module's copy and a consumer could become the
 // owner. The failure is conservative (the class is pinned to a loaded module), never dangling.
+//
+// The name is compiler-derived (see Templates/TypeName.h). A class in a namespace is keyed by
+// Namespace::Class, so two classes with the same simple name in different namespaces coexist.
 #define RCLASS(ClassName) \
 public: \
     using Super = ThisClass; \
     using ThisClass = ClassName; \
-    static const char* StaticClassName() { return #ClassName; } \
-    const char* GetClassName() const override { return #ClassName; } \
+    static const char* StaticClassName() { return QualifiedTypeName<ClassName>(); } \
+    const char* GetClassName() const override { return QualifiedTypeName<ClassName>(); } \
     friend class FObjectRegistry; \
 private: \
     inline static TObjectRegistrar<ClassName> AutoRegistrar{};
@@ -276,7 +275,6 @@ private: \
 // A subclass inherits its parent's list, so it does not repeat it. A subclass that adds an
 // interface of its own writes RIMPLEMENTS with only the new ones; the parent's remain reachable
 // through the class chain.
-#define RIMPLEMENTS(...) \
-public: \
-    using InterfaceTypes = TInterfaceList<__VA_ARGS__>; \
-private:
+//
+// The macro itself is defined in Object/Interface.h, which owns interfaces and is included
+// above. It is intentionally defined exactly once in the engine.

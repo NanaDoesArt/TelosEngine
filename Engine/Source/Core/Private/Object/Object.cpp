@@ -2,6 +2,9 @@
 #include "Logging/Log.h"
 #include <algorithm>
 #include <atomic>
+#include <mutex>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -14,6 +17,90 @@ namespace
     // module draws from the same sequence. A header-level 'inline static' would give each
     // DLL its own counter and produce colliding ids.
     std::atomic<uint64_t> GNextObjectID{ 1 };
+
+    // ==========================================================================
+    // Compiler-derived type names (declared in Templates/TypeName.h)
+    //
+    // The authored name (#ClassName) cannot be the registry key: two IInteractable
+    // interfaces in different namespaces are different types with the same authored
+    // name, and a registry that treats them as one silently returns the wrong
+    // subobject. The compiler's signature already contains the qualified name.
+    // ==========================================================================
+    std::string ExtractQualifiedTypeName(const char* Signature)
+    {
+        const std::string_view Text(Signature);
+        std::string Name;
+
+#if defined(_MSC_VER)
+        // "const char *__cdecl QualifiedTypeName<struct Ns::Foo>(void)"
+        const std::size_t Open = Text.find('<');
+        const std::size_t Close = Text.rfind('>');
+        if (Open == std::string_view::npos || Close == std::string_view::npos || Close <= Open)
+        {
+            return std::string(Signature);
+        }
+        Name.assign(Text.substr(Open + 1, Close - Open - 1));
+#else
+        // "const char* QualifiedTypeName() [with T = Ns::Foo]"
+        const std::size_t Marker = Text.find("T = ");
+        if (Marker == std::string_view::npos)
+        {
+            return std::string(Signature);
+        }
+        const std::size_t Begin = Marker + 4;
+        const std::size_t End = Text.find_first_of("];", Begin);
+        Name.assign(Text.substr(
+            Begin,
+            End == std::string_view::npos ? std::string_view::npos : End - Begin
+        ));
+#endif
+
+        // MSVC includes the class-key in template arguments ("struct Ns::Foo").
+        for (const char* Prefix : { "class ", "struct ", "enum ", "union " })
+        {
+            while (Name.starts_with(Prefix))
+            {
+                Name.erase(0, std::char_traits<char>::length(Prefix));
+            }
+        }
+
+        // Anonymous namespaces have no name that is stable across translation units
+        // (MSVC spells it `anonymous-namespace', GCC {anonymous}, Clang
+        // (anonymous namespace)). Strip it so the remaining name is at least identical in
+        // every TU, which is what lets a repeated registration of the same type be
+        // recognized as the same class. Uniqueness cannot be recovered this way, which is
+        // why TypeName.h documents anonymous-namespace types as test fixtures only.
+        for (const char* Prefix : {
+                 "`anonymous-namespace'::",
+                 "`anonymous namespace'::",
+                 "{anonymous}::",
+                 "(anonymous namespace)::"
+             })
+        {
+            for (std::size_t Pos = Name.find(Prefix); Pos != std::string::npos; Pos = Name.find(Prefix, Pos))
+            {
+                Name.erase(Pos, std::char_traits<char>::length(Prefix));
+            }
+        }
+
+        if (Name.empty())
+        {
+            // Never hand the registry an empty key. A signature is ugly but unique.
+            return std::string(Signature);
+        }
+        return Name;
+    }
+
+    // One string table for the whole process. Entries are only ever inserted, never
+    // moved out, and unordered_map guarantees that pointers to elements stay valid
+    // across rehashing, so the returned char* is stable for the life of Core.
+    TMap<FString, FString>& GetInternedTypeNames()
+    {
+        static TMap<FString, FString> Names;
+        return Names;
+    }
+
+    std::mutex GTypeNameMutex;
 
     template <typename T>
     class TScopedValue
@@ -50,6 +137,30 @@ namespace
         }
         return false;
     }
+}
+
+const char* InternQualifiedTypeName(const char* RawSignature)
+{
+    if (!RawSignature || !*RawSignature)
+    {
+        return "";
+    }
+
+    const std::string Qualified = ExtractQualifiedTypeName(RawSignature);
+    const FString Key(Qualified.c_str());
+
+    // Called once per type per translation unit, so a lock costs nothing measurable and
+    // makes the table safe to fill from any thread that logs or registers first.
+    std::lock_guard<std::mutex> Lock(GTypeNameMutex);
+
+    TMap<FString, FString>& Names = GetInternedTypeNames();
+    if (FString* Existing = Names.Find(Key))
+    {
+        return Existing->CStr();
+    }
+
+    Names.Add(Key, Key);
+    return Names.Find(Key)->CStr();
 }
 
 uint64_t RObject::AllocateUniqueID()
@@ -128,6 +239,8 @@ EClassRegistrationResult FObjectRegistry::RegisterClass(
     const FString& ModuleName,
     TFunction<RObject*()> Factory,
     TFunction<void(RObject*)> CdoDeleter,
+    uint32_t ClassSize,
+    uint32_t ClassAlignment,
     void (*AttachInterfaces)(FClassInfo&))
 {
     CheckGameThread("RegisterClass");
@@ -156,6 +269,28 @@ EClassRegistrationResult FObjectRegistry::RegisterClass(
     {
         if (Existing->SuperClassName == SuperName)
         {
+            // Same name, same base, different layout: two modules compiled different
+            // definitions of one class (stale headers, or an ODR violation). Using the
+            // first definition's metadata for objects built with the second is a heap
+            // corruption waiting to happen, so refuse the registration instead.
+            if (Existing->ClassSize != ClassSize || Existing->ClassAlignment != ClassAlignment)
+            {
+                VENGINE_LOG(
+                    LogCore,
+                    Error,
+                    "[ObjectRegistry] Layout mismatch for '{}': module '{}' registered sizeof={} align={}, "
+                    "module '{}' compiled sizeof={} align={}. Rebuild every module against the same headers.",
+                    Name.CStr(),
+                    Existing->OwningModule.CStr(),
+                    Existing->ClassSize,
+                    Existing->ClassAlignment,
+                    ModuleName.CStr(),
+                    ClassSize,
+                    ClassAlignment
+                );
+                return EClassRegistrationResult::Failed;
+            }
+
             VENGINE_LOG(
                 LogCore,
                 Verbose,
@@ -188,6 +323,8 @@ EClassRegistrationResult FObjectRegistry::RegisterClass(
     NewClass.OwningModule = ModuleName;
     NewClass.Factory = std::move(Factory);
     NewClass.CdoDeleter = std::move(CdoDeleter);
+    NewClass.ClassSize = ClassSize;
+    NewClass.ClassAlignment = ClassAlignment;
 
     Classes.Add(Name, eastl::move(NewClass));
     ResolveSuperClasses();
@@ -266,14 +403,15 @@ EClassRegistrationResult FObjectRegistry::RegisterClass(
     return EClassRegistrationResult::Registered;
 }
 
-void FObjectRegistry::UnregisterClass(const FString& Name, const FString& ModuleName)
+bool FObjectRegistry::UnregisterClass(const FString& Name, const FString& ModuleName)
 {
     CheckGameThread("UnregisterClass");
 
     FClassInfo* ClassInfo = Classes.Find(Name);
     if (!ClassInfo)
     {
-        return;
+        // Already removed. A finalization that is retried must report success.
+        return true;
     }
 
     // Header-defined classes are registered by the declaring module. Every other module has its
@@ -281,8 +419,37 @@ void FObjectRegistry::UnregisterClass(const FString& Name, const FString& Module
     // would delete the class out from under the module that still uses it.
     if (ClassInfo->OwningModule != ModuleName)
     {
-        return;
+        return true;
     }
+
+    // A registered subclass stores this FClassInfo* in its SuperClass field, and
+    // ResolveSuperClasses() would null it once the name is gone. A subclass in another module
+    // would then stay registered with a broken class graph: IsA<>, Cast<> to any ancestor and the
+    // interface chain walk would all stop seeing this class while its code is still loaded.
+    //
+    // Refuse instead, and let the caller retry once the dependent module is gone. Same-module
+    // subclasses are the normal case: registration order inside one module is not guaranteed, so
+    // the module's unregistration pass retries this class after its subclasses are removed.
+    for (const auto& Pair : Classes)
+    {
+        const FClassInfo& Other = Pair.second;
+        if (Other.SuperClass == ClassInfo)
+        {
+            VENGINE_LOG(
+                LogCore,
+                Warning,
+                "[ObjectRegistry] Delaying unregistration of '{}': subclass '{}' (module '{}') is still registered.",
+                Name.CStr(),
+                Other.Name.CStr(),
+                Other.OwningModule.CStr()
+            );
+            return false;
+        }
+    }
+
+    // Everything below this point either mutates state or is an invariant that cannot be
+    // recovered from, so every check that can legitimately fail runs first and a refused
+    // unregistration leaves the class exactly as it was.
 
     // Hard invariant: live instance records hold FClassInfo* pointers, so metadata must never be freed while instances survive
     auto FailIfInstancesRemain = [&]() -> bool
@@ -303,7 +470,7 @@ void FObjectRegistry::UnregisterClass(const FString& Name, const FString& Module
 
     if (FailIfInstancesRemain())
     {
-        return;
+        return false;
     }
 
     // Default subobjects of this class that sit inside other classes' default objects:
@@ -347,7 +514,7 @@ void FObjectRegistry::UnregisterClass(const FString& Name, const FString& Module
             ForeignOwner->OwningModule.CStr(),
             ClassInfo->DefaultSubobjectCount
         );
-        return;
+        return false;
     }
 
     // Destroy default objects BEFORE removing any metadata. This also destroys the default subobjects they own.
@@ -360,7 +527,7 @@ void FObjectRegistry::UnregisterClass(const FString& Name, const FString& Module
     // Anything still counted now was moved out of its default object, or is corrupted accounting
     if (FailIfInstancesRemain())
     {
-        return;
+        return false;
     }
     if (ClassInfo->DefaultSubobjectCount != 0)
     {
@@ -371,32 +538,13 @@ void FObjectRegistry::UnregisterClass(const FString& Name, const FString& Module
             Name.CStr(),
             ClassInfo->DefaultSubobjectCount
         );
-        return;
-    }
-
-    // A registered subclass with live objects would silently lose IsA()/Cast() support:
-    // ResolveSuperClasses() would null its SuperClass while its instances are still walking
-    // around with vtable pointers into our code. Treat it like every other destroyed-invariant
-    // in this file: Fatal, and do not remove the metadata.
-    for (const auto& Pair : Classes)
-    {
-        const FClassInfo& Other = Pair.second;
-        if (Other.SuperClass == ClassInfo && (Other.LiveInstanceCount != 0 || Other.DefaultSubobjectCount != 0))
-        {
-            VENGINE_LOG(
-                LogCore,
-                Fatal,
-                "[ObjectRegistry] Cannot unregister '{}': subclass '{}' still has live objects. Unload dependent modules first.",
-                Name.CStr(),
-                Other.Name.CStr()
-            );
-            return;
-        }
+        return false;
     }
 
     Classes.Remove(Name);
     ResolveSuperClasses();
     VENGINE_LOG(LogCore, Info, "[ObjectRegistry] Unregistered: {}", Name.CStr());
+    return true;
 }
 
 void FObjectRegistry::DestroyClassDefaultObject(FClassInfo& Info)

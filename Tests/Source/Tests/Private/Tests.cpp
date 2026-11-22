@@ -134,7 +134,62 @@ namespace
         const char* Solid() const override { return "sports"; }
         const char* Kind() const override { return "sports car"; }
     };
-    
+
+    // Two interfaces with the same simple name in different namespaces. The registry key is the
+    // compiler's qualified name, so one class can implement both and each cast reaches its own
+    // subobject. With simple names the second interface was silently dropped as a "duplicate"
+    // and Cast<Editor::IInteractable> handed back the Gameplay subobject.
+    namespace Gameplay
+    {
+        class IInteractable
+        {
+        public:
+            RINTERFACE(IInteractable)
+            virtual ~IInteractable() = default;
+            virtual const char* Touch() const = 0;
+        };
+    }
+
+    namespace Editor
+    {
+        class IInteractable
+        {
+        public:
+            RINTERFACE(IInteractable)
+            virtual ~IInteractable() = default;
+            virtual const char* Gizmo() const = 0;
+        };
+    }
+
+    class FTestDualNamed :
+        public RObject,
+        public Gameplay::IInteractable,
+        public Editor::IInteractable
+    {
+        RCLASS(FTestDualNamed)
+        RIMPLEMENTS(Gameplay::IInteractable, Editor::IInteractable)
+    public:
+        const char* Touch() const override { return "gameplay"; }
+        const char* Gizmo() const override { return "editor"; }
+    };
+
+    // The smallest hierarchy that can prove a base class refuses to unregister while a subclass
+    // is still registered. Both belong to the test module, so the module's own unregistration
+    // pass is what retries the base after the subclass is gone.
+    class FTestUnloadBase : public RObject
+    {
+        RCLASS(FTestUnloadBase)
+    public:
+        FTestUnloadBase() = default;
+    };
+
+    class FTestUnloadDerived : public FTestUnloadBase
+    {
+        RCLASS(FTestUnloadDerived)
+    public:
+        FTestUnloadDerived() = default;
+    };
+
 }
 
 class FTestsModule : public IModuleInterface
@@ -252,7 +307,9 @@ public:
                 "FObjectScope",
                 "Tests_Tests",
                 &FTestLeafEntity::MakeInstance,
-                &FTestLeafEntity::DeleteInstance
+                &FTestLeafEntity::DeleteInstance,
+                static_cast<uint32_t>(sizeof(FTestLeafEntity)),
+                static_cast<uint32_t>(alignof(FTestLeafEntity))
             );
 
             VerifyCheck(
@@ -475,6 +532,144 @@ public:
         "The second unload also removes the class metadata."
     );
 }
+
+        // 11. Namespaced interfaces: same simple name, different types
+        {
+            VerifyCheck(
+                std::strcmp(Gameplay::IInteractable::StaticInterfaceName(), "Gameplay::IInteractable") == 0 &&
+                std::strcmp(Editor::IInteractable::StaticInterfaceName(), "Editor::IInteractable") == 0,
+                "InterfaceNamesAreQualified",
+                "Interfaces are named by the compiler's qualified name, not by the authored simple name."
+            );
+
+            FTestDualNamed* Dual = NewObject<FTestDualNamed>();
+            VerifyCheck(Dual != nullptr, "DualNamedCreated", "Object implementing two same-named interfaces created.");
+
+            Gameplay::IInteractable* GameplaySide = Cast<Gameplay::IInteractable>(Dual);
+            Editor::IInteractable* EditorSide = Cast<Editor::IInteractable>(Dual);
+
+            VerifyCheck(
+                GameplaySide != nullptr && EditorSide != nullptr,
+                "SameNamedInterfacesBothResolve",
+                "Both interfaces resolve even though both are called IInteractable."
+            );
+            VerifyCheck(
+                static_cast<void*>(GameplaySide) != static_cast<void*>(EditorSide),
+                "SameNamedInterfacesDifferentSubobjects",
+                "The two cast results are different subobjects, not one pointer reinterpreted."
+            );
+            VerifyCheck(
+                std::strcmp(GameplaySide->Touch(), "gameplay") == 0 &&
+                std::strcmp(EditorSide->Gizmo(), "editor") == 0,
+                "SameNamedInterfacesDispatch",
+                "Each cast dispatches to the implementation of the interface it was cast to."
+            );
+
+            const FClassInfo* Info = Registry.FindClass(FTestDualNamed::StaticClassName());
+            const FImplementedInterface* GameplayEntry =
+                Info ? Info->FindInterface(Gameplay::IInteractable::StaticInterfaceName()) : nullptr;
+            const FImplementedInterface* EditorEntry =
+                Info ? Info->FindInterface(Editor::IInteractable::StaticInterfaceName()) : nullptr;
+
+            VerifyCheck(
+                Info != nullptr &&
+                Info->Interfaces.Num() == 2 &&
+                GameplayEntry != nullptr &&
+                EditorEntry != nullptr &&
+                GameplayEntry != EditorEntry &&
+                GameplayEntry->Name != EditorEntry->Name,
+                "SameNamedInterfacesBothRegistered",
+                "The class metadata holds two entries whose names differ only by namespace."
+            );
+
+            Destroy(Dual);
+        }
+
+        // 12. Unregistration order: a base class cannot leave while a subclass is registered
+        {
+            const FClassInfo* BaseBefore = Registry.FindClass(FTestUnloadBase::StaticClassName());
+            const FClassInfo* DerivedBefore = Registry.FindClass(FTestUnloadDerived::StaticClassName());
+            VerifyCheck(
+                BaseBefore != nullptr && DerivedBefore != nullptr,
+                "UnloadOrderClassesRegistered",
+                "Both classes of the unregistration-order pair are registered."
+            );
+
+            VerifyCheck(
+                !Registry.UnregisterClass<FTestUnloadBase>("Tests_Tests"),
+                "BaseBlockedBySubclass",
+                "The base class refuses to unregister while its subclass is still registered."
+            );
+            VerifyCheck(
+                Registry.FindClass(FTestUnloadBase::StaticClassName()) == BaseBefore,
+                "RefusedUnregisterChangesNothing",
+                "A refused unregistration leaves the base class metadata in place."
+            );
+
+            VerifyCheck(
+                Registry.UnregisterClass<FTestUnloadDerived>("Tests_Tests"),
+                "SubclassUnregistered",
+                "The subclass unregisters when nothing derives from it."
+            );
+            VerifyCheck(
+                Registry.UnregisterClass<FTestUnloadBase>("Tests_Tests"),
+                "BaseUnregisteredAfterSubclass",
+                "The base class unregisters once the subclass is gone."
+            );
+            VerifyCheck(
+                Registry.FindClass(FTestUnloadBase::StaticClassName()) == nullptr &&
+                Registry.FindClass(FTestUnloadDerived::StaticClassName()) == nullptr,
+                "UnloadOrderClassesGone",
+                "Both classes are gone and the registry no longer knows them."
+            );
+        }
+
+        // 13. Layout fingerprint: two modules that compiled one class differently are refused
+        {
+            const FClassInfo* Vehicle = Registry.FindClass(FTestVehicle::StaticClassName());
+            VerifyCheck(
+                Vehicle != nullptr && Vehicle->ClassSize != 0 && Vehicle->ClassAlignment != 0,
+                "LayoutFingerprintRecorded",
+                "The registering translation unit's sizeof/alignof were stored with the class."
+            );
+
+            const EClassRegistrationResult Mismatch = Registry.RegisterClass(
+                FTestVehicle::StaticClassName(),
+                "RObject",
+                "Tests_LayoutMismatch",
+                []() -> RObject* { return nullptr; },
+                [](RObject*) {},
+                Vehicle->ClassSize + 8,
+                Vehicle->ClassAlignment
+            );
+
+            VerifyCheck(
+                Mismatch == EClassRegistrationResult::Failed,
+                "LayoutMismatchRejected",
+                "A registration with the same name and base but a different layout is rejected."
+            );
+            VerifyCheck(
+                Registry.FindClass(FTestVehicle::StaticClassName()) == Vehicle,
+                "LayoutMismatchKeepsOriginal",
+                "The rejected duplicate did not replace the original metadata."
+            );
+
+            const EClassRegistrationResult Repeat = Registry.RegisterClass(
+                FTestVehicle::StaticClassName(),
+                "RObject",
+                "Tests_LayoutMismatch",
+                []() -> RObject* { return nullptr; },
+                [](RObject*) {},
+                Vehicle->ClassSize,
+                Vehicle->ClassAlignment
+            );
+
+            VerifyCheck(
+                Repeat == EClassRegistrationResult::AlreadyRegistered,
+                "LayoutMatchAcceptedAsDuplicate",
+                "The same class with the same layout is still accepted as an idempotent duplicate."
+            );
+        }
 
         VENGINE_LOG(LogCore, Info, "[Tests] All in-module assertions PASSED!");
         return true;

@@ -1,5 +1,6 @@
 #pragma once
 #include "Containers/String.h"
+#include "Templates/TypeName.h"
 
 class RObject;
 
@@ -43,6 +44,10 @@ class RObject;
 //
 // Listing the bases is all it takes: implementing ITunedRadio automatically registers
 // IRadio as well, because the whole point of extending an interface is to promise it.
+//
+// Interfaces may live in namespaces, and the name the registry uses is the compiler's
+// qualified name (Gameplay::IInteractable, Editor::IInteractable). You never type it.
+// Two interfaces with the same simple name are different types, as they should be.
 // ==============================================================================
 
 // One interface implemented by a class.
@@ -67,13 +72,16 @@ struct TInterfaceList
 {
 };
 
-// Declares the interface's name and its base interfaces. Must be the first thing in the
-// interface class body. Expands to nothing but a public type alias and a static function,
-// so the class stays a plain abstract class (std::is_abstract, virtual dispatch, etc.).
+// Declares the interface's name and its base interfaces. Expands to a public type alias
+// and a static function, so the class stays a plain abstract class (std::is_abstract,
+// virtual dispatch, no base classes of its own).
+//
+// Every member of an interface is public, so this leaves the class in public scope. Put
+// it at the top of the body; there is nothing private to protect before it.
 #define RINTERFACE(InterfaceName, ...) \
 public: \
     using InterfaceBases = TInterfaceList<__VA_ARGS__>; \
-    static const char* StaticInterfaceName() { return #InterfaceName; } \
+    static const char* StaticInterfaceName() { return QualifiedTypeName<InterfaceName>(); } \
 
 // Declares which interfaces a class implements. Go inside the class body, after RCLASS().
 // Variadic and non-recursive: no __VA_OPT__, no build flags, plain C++20.
