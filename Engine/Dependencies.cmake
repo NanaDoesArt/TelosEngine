@@ -55,7 +55,29 @@ FetchContent_Declare(
         GIT_SHALLOW ON
 )
 
-FetchContent_MakeAvailable(mimalloc EASTL spdlog thread_pool glfw)
+set(RTM_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(RTM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(RTM_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+        rtm
+        GIT_REPOSITORY https://github.com/nfrechette/rtm.git
+        GIT_TAG v2.4.0
+        GIT_SHALLOW ON
+)
+
+FetchContent_MakeAvailable(rtm mimalloc EASTL spdlog thread_pool glfw)
+
+set_target_properties(
+        glfw
+        uninstall
+        update_mappings
+        PROPERTIES
+        FOLDER "ThirdParty"
+)
+
+add_library(rtm INTERFACE)
+target_include_directories(rtm INTERFACE "${rtm_SOURCE_DIR}/includes")
 
 add_library(BS_thread_pool INTERFACE)
 target_include_directories(BS_thread_pool INTERFACE "${thread_pool_SOURCE_DIR}/include")

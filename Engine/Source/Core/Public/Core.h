@@ -5,6 +5,7 @@
 // Foundational Memory & Platform Primitives
 #include "HAL/Memory.h"
 #include "HAL/PlatformTime.h"
+#include "HAL/Platform.h"
 
 // Thread-Safe Categorized Logging
 #include "Logging/Log.h"
@@ -17,3 +18,6 @@
 
 // Module Interface
 #include "Modules/ModuleInterface.h"
+
+//Math
+#include "Math/Vector2D.h"

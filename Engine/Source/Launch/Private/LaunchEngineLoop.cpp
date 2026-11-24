@@ -1,6 +1,5 @@
 ﻿#include "LaunchEngineLoop.h"
 #include "Core.h"
-#include "HAL/Application.h"
 #include "HAL/PlatformProcess.h"
 #include "Async/ThreadPool.h"
 #include "Logging/ConsoleDashboard.h"
@@ -115,17 +114,7 @@ void FEngineLoop::Tick()
     {
         ++FrameHistoryCount;
     }
-
-    // 1. OS / window messages. There is no platform backend yet; once one is installed it receives
-    //    the frame delta and can request an exit (window closed).
-    if (FGenericApplication* Application = FGenericApplication::Get())
-    {
-        Application->PumpMessages(static_cast<float>(DeltaSeconds));
-        if (Application->IsExitRequested())
-        {
-            RequestExit();
-        }
-    }
+    
 
     // 2. The console dashboard. TryEnable() is a no-op once it has succeeded, and stays off when
     //    stdout is redirected, so this needs no switch: the console is simply the current front-end.
