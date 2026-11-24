@@ -1,13 +1,5 @@
 ﻿include(FetchContent)
 
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        raylib
-        GIT_REPOSITORY https://github.com/raysan5/raylib.git
-        GIT_TAG 6.2
-        GIT_SHALLOW TRUE
-)
-
 # 1. Memory Allocator (microsoft/mimalloc)
 set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -52,7 +44,18 @@ FetchContent_Declare(
         GIT_SHALLOW ON
 )
 
-FetchContent_MakeAvailable(raylib mimalloc EASTL spdlog thread_pool)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG 3.5.1
+        GIT_SHALLOW ON
+)
+
+FetchContent_MakeAvailable(mimalloc EASTL spdlog thread_pool glfw)
 
 add_library(BS_thread_pool INTERFACE)
 target_include_directories(BS_thread_pool INTERFACE "${thread_pool_SOURCE_DIR}/include")
