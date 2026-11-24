@@ -17,6 +17,7 @@ set(PUBLIC_THIRD_PARTY_DEPENDENCIES
 
 set(THIRD_PARTY_DEPENDENCIES
     # External libraries fetched in Project/Dependencies.cmake
+        rtm
         mimalloc-static
         spdlog
         BS_thread_pool

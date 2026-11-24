@@ -55,10 +55,6 @@ FetchContent_Declare(
         GIT_SHALLOW ON
 )
 
-set(RTM_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(RTM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(RTM_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-
 FetchContent_Declare(
         rtm
         GIT_REPOSITORY https://github.com/nfrechette/rtm.git
@@ -66,7 +62,7 @@ FetchContent_Declare(
         GIT_SHALLOW ON
 )
 
-FetchContent_MakeAvailable(rtm mimalloc EASTL spdlog thread_pool glfw)
+FetchContent_MakeAvailable(mimalloc EASTL spdlog thread_pool glfw)
 
 set_target_properties(
         glfw
@@ -76,8 +72,19 @@ set_target_properties(
         FOLDER "ThirdParty"
 )
 
-add_library(rtm INTERFACE)
-target_include_directories(rtm INTERFACE "${rtm_SOURCE_DIR}/includes")
+FetchContent_GetProperties(rtm)
+
+if(NOT rtm_POPULATED)
+    FetchContent_Populate(rtm)
+endif()
+
+add_library(RTM INTERFACE)
+
+target_include_directories(RTM SYSTEM INTERFACE
+        "${rtm_SOURCE_DIR}/includes"
+)
+
+add_library(RTM::RTM ALIAS RTM)
 
 add_library(BS_thread_pool INTERFACE)
 target_include_directories(BS_thread_pool INTERFACE "${thread_pool_SOURCE_DIR}/include")
