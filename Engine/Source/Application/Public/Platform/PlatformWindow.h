@@ -1,94 +1,48 @@
 ﻿#pragma once
-#include "Templates/SmartPointer.h"
-#include "Core.h"
+#include "ApplicationAPI.h"
+#include "HAL/Platform.h"
 
+// ==============================================================================
+// The OS window behind FWindow.
+//
+// This is the only platform-specific part of a window, and it is deliberately small: every
+// method here has to be implemented by any backend (GLFW today, native Win32 or Cocoa later).
+// Anything that is not an OS operation (the window registry, exit policy, frame pacing)
+// belongs to FApplication, not here.
+//
+// Ownership: FPlatformApplication::CreateWindow() returns one of these, and only the same
+// backend may destroy it (FPlatformApplication::DestroyWindow()).
+// ==============================================================================
 class Application_API FPlatformWindow
 {
 public:
-	Application_API FPlatformWindow();
+    virtual ~FPlatformWindow() = default;
 
-	Application_API virtual ~FPlatformWindow();
-	
-	Application_API virtual void ReshapeWindow( int32 X, int32 Y, int32 Width, int32 Height );
-	
-	Application_API virtual bool GetFullScreenInfo( int32& X, int32& Y, int32& Width, int32& Height ) const;
-	
-	Application_API virtual void MoveWindowTo ( int32 X, int32 Y );
-	
-	Application_API virtual void BringToFront( bool bForce = false );
-	
-	Application_API virtual void Destroy();
-	
-	Application_API virtual void Minimize();
-	
-	Application_API virtual void Maximize();
-	
-	Application_API virtual void Restore();
-	
-	Application_API virtual void Show();
-	
-	Application_API virtual void Hide();
-	
-	Application_API virtual void SetWindowMode( EWindowMode::Type InNewWindowMode );
-	
-	Application_API virtual EWindowMode::Type GetWindowMode() const;
-	
-	Application_API virtual bool IsMaximized() const;
-	
-	Application_API virtual bool IsMinimized() const;
-	
-	Application_API virtual bool IsVisible() const;
+    // GLFWwindow* / HWND / NSWindow*, depending on the backend. Opaque on purpose: only code
+    // that knows the backend may use it.
+    virtual void* GetNativeHandle() const = 0;
 
-	Application_API virtual bool GetRestoredDimensions(int32& X, int32& Y, int32& Width, int32& Height);
-	
-	Application_API virtual void SetWindowFocus();
+    virtual void SetTitle(const char* Title) = 0;
 
-	Application_API virtual void SetOpacity( const float InOpacity );
-	
-	Application_API virtual void Enable( bool bEnable );
+    // Window size in screen coordinates: what the title bar and window layout use.
+    virtual void GetSize(int32& OutWidth, int32& OutHeight) const = 0;
 
-	Application_API virtual bool IsPointInWindow( int32 X, int32 Y ) const;
-	
-	Application_API virtual int32 GetWindowBorderSize() const;
-	
-	Application_API virtual int32 GetWindowTitleBarSize() const;
+    // Drawable size in pixels. Differs from GetSize() under DPI scaling, and it is the size a
+    // viewport or swap chain must use.
+    virtual void GetFramebufferSize(int32& OutWidth, int32& OutHeight) const = 0;
 
-	Application_API virtual void* GetOSWindowHandle() const;
+    virtual void Show() = 0;
+    virtual void Hide() = 0;
+    virtual bool IsVisible() const = 0;
 
-	Application_API virtual bool IsForegroundWindow() const;
+    // Makes this window's context current on the calling thread.
+    virtual void MakeContextCurrent() = 0;
 
+    // Publishes the window's back buffer. Today the GLFW backend also clears to the window's
+    // placeholder colour because there is no renderer yet; once one exists, drawing happens
+    // before this call and Present() becomes a pure buffer swap.
+    virtual void Present() = 0;
 
-	Application_API virtual bool SupportsDynamicCursorLock() const;
-	
-	Application_API virtual bool IsFullscreenSupported() const;
-
-	Application_API virtual void SetText(const char* const Text);
-	
-	Application_API virtual const FGenericWindowDefinition& GetDefinition() const;
-	
-	Application_API virtual bool IsDefinitionValid() const;
-	
-	Application_API virtual void AdjustCachedSize( FVector2D& Size ) const;
-	
-	Application_API virtual float GetDPIScaleFactor() const;
-	
-	Application_API virtual void SetDPIScaleFactor(const float Factor);
-	
-	Application_API virtual bool IsManualManageDPIChanges() const;
-	
-	Application_API virtual void SetManualManageDPIChanges(const bool bAutoHandle);
-
-	Application_API virtual void DrawAttention(const FWindowDrawAttentionParameters& Parameters);
-	
-	Application_API virtual void SetNativeWindowButtonsVisibility(bool bVisible);
-	
-	Application_API virtual bool IsRenderingOffScreen() const;
-
-	Application_API virtual void SetIsInteractiveTooltip(bool bInIsInteractiveTooltip);
-
-protected:
-
-	TSharedPtr< FGenericWindowDefinition > Definition;
-};
-    
+    virtual bool ShouldClose() const = 0;
+    virtual void RequestClose() = 0;
 };

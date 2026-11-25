@@ -20,6 +20,13 @@ public:
 
     void ShutdownModule() override
     {
+        // The module owns the process-wide application state, so it tears it down here, while
+        // this DLL is still loaded and the logger is still alive. Game modules unload before
+        // this one (they are PostEngineInit), so windows a game still owned had their chance to
+        // be destroyed through FApplication; Shutdown() collects any that were left behind and
+        // only then terminates the backend.
+        FApplication::Get().Shutdown();
+
         VENGINE_LOG(LogCore, Info, "[Engine_Application] Module shutting down!");
     }
 };

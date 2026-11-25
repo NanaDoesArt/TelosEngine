@@ -1,22 +1,24 @@
 # Module Build Dependencies & Boot Stage
-# Loading Phases: PreDefault, Default, PostEngineInit
-set(LOADING_PHASE "Default")
+# Loading Phases: PreDefault, Default, PostEngineInit)
+set(LOADING_PHASE "PreDefault")
 
-# Modules exposed in this module's Public/ headers (inherited by consumers)
+# Core is in the Public/ headers, so it is a public dependency: FWindowDefinition carries an
+# FString, and every caller of FApplication::CreateWindow() needs Core's include paths too.
 set(PUBLIC_DEPENDENCY_MODULES
-)
-
-# Modules used only inside this module's Private/ .cpp files (hidden from consumers)
-set(PRIVATE_DEPENDENCY_MODULES
         Engine::Core
-        glfw
 )
 
-# Move Engine::Core to PUBLIC_DEPENDENCY_MODULES as soon as a Public/ header includes a
-# Core header (Object/Object.h, Delegates/Delegate.h, ...), or consumers cannot include it.
+set(PRIVATE_DEPENDENCY_MODULES
+)
 
+# GLFW is private: no Public/ header includes <GLFW/glfw3.h>. Only the backend in Private/
+# does, so consumers of this module never see a GLFW type or include path.
 set(PUBLIC_THIRD_PARTY_DEPENDENCIES
 )
 
+# OpenGL::GL is private as well. GLFW creates the OpenGL context but does not link OpenGL
+# itself, and the placeholder frame in the backend issues glViewport/glClearColor/glClear.
+# When a renderer module takes over drawing, this dependency moves there with the calls.
 set(THIRD_PARTY_DEPENDENCIES
+        glfw
 )
