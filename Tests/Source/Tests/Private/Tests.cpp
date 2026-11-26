@@ -21,7 +21,7 @@ namespace
         VENGINE_LOG(LogCore, Info, "[CoreTests] PASSED ({}): {}", TestName, Detail);
     }
 
-    class FTestLeafEntity : public RObject
+    class FTestLeafEntity : public Object
     {
         RCLASS(FTestLeafEntity)
     public:
@@ -30,13 +30,13 @@ namespace
         // RObject::operator new/delete are protected so only the registry can construct objects.
         // A hand-written registration still needs a factory, and a member of the derived class
         // is allowed to call them.
-        static RObject* MakeInstance() { return new FTestLeafEntity(); }
-        static void DeleteInstance(RObject* Ptr) { delete static_cast<FTestLeafEntity*>(Ptr); }
+        static Object* MakeInstance() { return new FTestLeafEntity(); }
+        static void DeleteInstance(Object* Ptr) { delete static_cast<FTestLeafEntity*>(Ptr); }
     };
 
     // Exercises nested NewObject<T>() inside an object's constructor. The object being built is
     // the construction site, so the child is owned by it without any special syntax.
-    class FNestedConstructorEntity : public RObject
+    class FNestedConstructorEntity : public Object
     {
         RCLASS(FNestedConstructorEntity)
     public:
@@ -49,10 +49,10 @@ namespace
         FTestLeafEntity* NestedChild = nullptr;
     };
 
-    class FThrowingCdoTest : public RObject
+    class FThrowingCdoTest : public Object
     {
     public:
-        using Super = RObject;
+        using Super = Object;
         using ThisClass = FThrowingCdoTest;
         static const char* StaticClassName() { return "FThrowingCdoTest"; }
         const char* GetClassName() const override { return "FThrowingCdoTest"; }
@@ -81,7 +81,7 @@ namespace
         virtual const char* Label() const = 0;
     };
 
-    class FTestDevice : public RObject, public ITestSensor, public ITestNamed
+    class FTestDevice : public Object, public ITestSensor, public ITestNamed
     {
         RCLASS(FTestDevice)
         RIMPLEMENTS(ITestSensor, ITestNamed)
@@ -109,7 +109,7 @@ namespace
         virtual const char* Solid() const = 0;
     };
 
-    class FTestVehicle : public RObject, public ITestSensor
+    class FTestVehicle : public Object, public ITestSensor
     {
         RCLASS(FTestVehicle)
         RIMPLEMENTS(ITestSensor)
@@ -162,7 +162,7 @@ namespace
     }
 
     class FTestDualNamed :
-        public RObject,
+        public Object,
         public Gameplay::IInteractable,
         public Editor::IInteractable
     {
@@ -176,7 +176,7 @@ namespace
     // The smallest hierarchy that can prove a base class refuses to unregister while a subclass
     // is still registered. Both belong to the test module, so the module's own unregistration
     // pass is what retries the base after the subclass is gone.
-    class FTestUnloadBase : public RObject
+    class FTestUnloadBase : public Object
     {
         RCLASS(FTestUnloadBase)
     public:
@@ -286,7 +286,7 @@ public:
             // Every module that includes a header gets its own copy of the registrar. The second
             // copy must be accepted and ignored, not treated as an error.
             const EClassRegistrationResult DuplicateResult =
-                Registry.RegisterClass<RObject>("Tests_Tests");
+                Registry.RegisterClass<Object>("Tests_Tests");
 
             VerifyCheck(
                 DuplicateResult == EClassRegistrationResult::AlreadyRegistered,
@@ -333,7 +333,7 @@ public:
 
         // 7. An object that escaped its module scope keeps the module's classes registered
         {
-            RObject* ForeignRoot = FModuleManager::Get().GetOrCreateModuleScope("Tests_EscapeHatch");
+            Object* ForeignRoot = FModuleManager::Get().GetOrCreateModuleScope("Tests_EscapeHatch");
             VerifyCheck(ForeignRoot != nullptr, "EscapeRoot", "Foreign scope created.");
 
             FTestLeafEntity* Escaped = NewObject<FTestLeafEntity>(ForeignRoot);
@@ -362,7 +362,7 @@ public:
                 "The two interfaces sit at different addresses, so the thunk performs a real adjustment."
             );
 
-            RObject* AsObject = Device;
+            Object* AsObject = Device;
             VerifyCheck(Cast<ITestSensor>(AsObject) == Sensor, "InterfaceCastFromBase", "Casting from RObject* reaches the same interface subobject.");
             VerifyCheck(Cast<FTestDevice>(AsObject) == Device, "ClassCastStillWorks", "Class casts still work after the interface change.");
 
@@ -405,13 +405,13 @@ public:
             );
             VerifyCheck(std::strcmp(AsVehicle->Kind(), "sports car") == 0, "VirtualDispatchThroughBase", "Calling through the base pointer dispatches to the leaf override.");
 
-            RObject* AsObject = Sports;
-            VerifyCheck(Sports->IsA<FTestVehicle>() && Sports->IsA<FTestCar>() && Sports->IsA<RObject>(), "IsAWalkedUpChain", "IsA<> is true for every ancestor.");
+            Object* AsObject = Sports;
+            VerifyCheck(Sports->IsA<FTestVehicle>() && Sports->IsA<FTestCar>() && Sports->IsA<Object>(), "IsAWalkedUpChain", "IsA<> is true for every ancestor.");
             VerifyCheck(Cast<FTestCar>(AsObject) == static_cast<FTestCar*>(Sports), "ClassCastFromBase", "Class cast from RObject* reaches the leaf's ancestor subobject.");
             VerifyCheck(Cast<FTestSportsCar>(AsObject) == Sports, "ClassCastExactLeaf", "Class cast to the exact leaf class succeeds.");
 
             FTestCar* Car = NewObject<FTestCar>();
-            VerifyCheck(Cast<FTestSportsCar>(static_cast<RObject*>(Car)) == nullptr, "DowncastRejected", "Casting a real FTestCar to FTestSportsCar returns nullptr.");
+            VerifyCheck(Cast<FTestSportsCar>(static_cast<Object*>(Car)) == nullptr, "DowncastRejected", "Casting a real FTestCar to FTestSportsCar returns nullptr.");
             VerifyCheck(Cast<FTestVehicle>(Car) == static_cast<FTestVehicle*>(Car), "SiblingUpcast", "An instance of the middle class casts up to its base.");
 
             // The leaf's RIMPLEMENTS shadows the parent's list. The parent's interface must still be
@@ -459,7 +459,7 @@ public:
             "The class metadata contains a valid interface thunk."
         );
 
-        const RObject* CDO = Registry.GetCDO(ClassName);
+        const Object* CDO = Registry.GetCDO(ClassName);
 
         VerifyCheck(
             CDO != nullptr,
@@ -637,8 +637,8 @@ public:
                 FTestVehicle::StaticClassName(),
                 "RObject",
                 "Tests_LayoutMismatch",
-                []() -> RObject* { return nullptr; },
-                [](RObject*) {},
+                []() -> Object* { return nullptr; },
+                [](Object*) {},
                 Vehicle->ClassSize + 8,
                 Vehicle->ClassAlignment
             );
@@ -658,8 +658,8 @@ public:
                 FTestVehicle::StaticClassName(),
                 "RObject",
                 "Tests_LayoutMismatch",
-                []() -> RObject* { return nullptr; },
-                [](RObject*) {},
+                []() -> Object* { return nullptr; },
+                [](Object*) {},
                 Vehicle->ClassSize,
                 Vehicle->ClassAlignment
             );

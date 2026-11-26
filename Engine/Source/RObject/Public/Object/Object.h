@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "CoreAPI.h"
+#include "RObjectAPI.h"
 #include "ObjectRegistry.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
@@ -12,10 +12,10 @@
 
 class RObject;
 
-class Core_API RObject
+class RObject_API RObject
 {
 public:
-    using ThisClass = RObject;
+    using ThisClass = Object;
 
     RObject(RObject* InOuter = nullptr);
     virtual ~RObject();
@@ -92,15 +92,18 @@ inline void Destroy(RObject* Obj)
 // ==============================================================================
 // Lifetime scope object
 //
-// One instance per loaded module. Created by FObjectRegistry::CreateScope() on behalf of
-// FModuleManager, which owns the name -> scope map and destroys the scope when the module
+// One instance per loaded module. Created by FObjectRegistry::GetOrCreateModuleScope() when
+// the module is loaded and destroyed by FObjectRegistry::ReleaseModuleObjects() when it
 // unloads. Every object a module creates with NewObject<T>() outside a constructor hangs off
 // this scope, so a module's objects die with the module and never leak.
+// 
+// The registry owns the name -> scope map. The module manager never sees a scope, an RObject
+// or this class.
 //
 // Not RCLASS'd on purpose: RCLASS installs a per-DLL auto-registrar, and this class must be
-// registered exactly once, by Core, on first use (see EnsureBootstrapClasses()).
+// registered exactly once, by the object runtime, on first use (see EnsureBootstrapClasses()).
 // ==============================================================================
-class Core_API FObjectScope : public RObject
+class Object_API FObjectScope : public RObject
 {
 public:
     using Super = RObject;
@@ -188,12 +191,13 @@ T* NewObject()
 {
     FObjectRegistry& Registry = FObjectRegistry::Get();
 
-    RObject* Owner = Registry.GetConstructionSite();
+    Object* Owner = Registry.GetConstructionSite();
     if (!Owner)
     {
         // Which DLL compiled this call decides the owner. That is the point: the object cannot
-        // outlive the code that made it.
-        Owner = FModuleManager::Get().GetOrCreateModuleScope(FString(VENGINE_CURRENT_MODULE_NAME));
+        // outlive the code that made it. The runtime owns the scope; the module manager does not
+        // know that objects exist.
+        Owner = Registry.GetOrCreateModuleScope(FString(VENGINE_CURRENT_MODULE_NAME));
     }
     if (!Owner)
     {

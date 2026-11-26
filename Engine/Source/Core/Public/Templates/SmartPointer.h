@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <type_traits>
 
-class RObject;
+class Object;
 
 template <typename T>
 class TWeakPtr;
@@ -18,12 +18,12 @@ public:
     TSharedPtr(std::nullptr_t) : Ptr(nullptr) {}
     explicit TSharedPtr(T* RawPtr) : Ptr(RawPtr)
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TSharedPtr cannot manage RObject subclasses! Use NewObject<T>(Outer) and TWeakObjectPtr<T> instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TSharedPtr cannot manage RObject subclasses! Use NewObject<T>(Outer) and TWeakObjectPtr<T> instead.");
     }
 
     ~TSharedPtr()
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TSharedPtr cannot manage RObject subclasses! Use NewObject<T>(Outer) and TWeakObjectPtr<T> instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TSharedPtr cannot manage RObject subclasses! Use NewObject<T>(Outer) and TWeakObjectPtr<T> instead.");
     }
 
     TSharedPtr(const TSharedPtr&) = default;
@@ -66,12 +66,12 @@ public:
     TWeakPtr() = default;
     TWeakPtr(const TSharedPtr<T>& Shared) : Ptr(Shared.Ptr)
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TWeakPtr cannot reference RObject subclasses! Use TWeakObjectPtr<T> instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TWeakPtr cannot reference RObject subclasses! Use TWeakObjectPtr<T> instead.");
     }
 
     ~TWeakPtr()
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TWeakPtr cannot reference RObject subclasses! Use TWeakObjectPtr<T> instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TWeakPtr cannot reference RObject subclasses! Use TWeakObjectPtr<T> instead.");
     }
 
     TWeakPtr(const TWeakPtr&) = default;
@@ -95,12 +95,12 @@ public:
     TUniquePtr(std::nullptr_t) : Ptr(nullptr) {}
     explicit TUniquePtr(T* RawPtr) : Ptr(RawPtr)
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TUniquePtr cannot manage RObject subclasses! Use NewObject<T>(Outer) instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TUniquePtr cannot manage RObject subclasses! Use NewObject<T>(Outer) instead.");
     }
 
     ~TUniquePtr()
     {
-        static_assert(!std::is_base_of_v<RObject, T>, "TUniquePtr cannot manage RObject subclasses! Use NewObject<T>(Outer) instead.");
+        static_assert(!std::is_base_of_v<Object, T>, "TUniquePtr cannot manage RObject subclasses! Use NewObject<T>(Outer) instead.");
     }
 
     TUniquePtr(const TUniquePtr&) = delete;
@@ -126,13 +126,13 @@ private:
 template <typename T, typename... Args>
 TSharedPtr<T> MakeShared(Args&&... args)
 {
-    static_assert(!std::is_base_of_v<RObject, T>, "RObject subclasses cannot use MakeShared! Use NewObject<T>(Outer) instead.");
+    static_assert(!std::is_base_of_v<Object, T>, "RObject subclasses cannot use MakeShared! Use NewObject<T>(Outer) instead.");
     return TSharedPtr<T>(eastl::make_shared<T>(eastl::forward<Args>(args)...));
 }
 
 template <typename T, typename... Args>
 TUniquePtr<T> MakeUnique(Args&&... args)
 {
-    static_assert(!std::is_base_of_v<RObject, T>, "RObject subclasses cannot use MakeUnique! Use NewObject<T>(Outer) instead.");
+    static_assert(!std::is_base_of_v<Object, T>, "RObject subclasses cannot use MakeUnique! Use NewObject<T>(Outer) instead.");
     return TUniquePtr<T>(new T(eastl::forward<Args>(args)...));
 }

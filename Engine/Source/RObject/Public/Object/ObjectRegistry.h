@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "CoreAPI.h"
+#include "RObjectAPI.h"
 #include "Object/Interface.h"
 #include "Containers/String.h"
 #include "Containers/Map.h"
@@ -10,7 +10,6 @@
 #include "Templates/Function.h"
 
 class RObject;
-class FModuleManager;
 
 // Result of a class registration.
 //
@@ -102,11 +101,12 @@ struct FClassInfo
 
 // Appends one interface to a class's list, ignoring a duplicate name (interface diamonds).
 //
-// Defined in Core on purpose. The name is stored in an FString, and the buffer must be
-// allocated and freed by the same module. If this were inline, the FString would be built
-// in the module that registers the class and freed in Core when the class is removed, which
-// is two different allocators. Here the FString is built and freed by Core in both cases.
-Core_API void AddClassInterface(FClassInfo& Info, const char* InterfaceName, void* (*GetAddress)(RObject*));
+// Defined in the Object module on purpose. The name is stored in an FString, and the buffer
+// must be allocated and freed by the same module. If this were inline, the FString would be
+// built in the module that registers the class and freed in Object when the class is removed,
+// which is two different allocators. Here the FString is built and freed by Object in both
+// cases.
+RObject_API void AddClassInterface(FClassInfo& Info, const char* InterfaceName, void* (*GetAddress)(RObject*));
 
 namespace InterfaceRegistrationDetail
 {
@@ -167,7 +167,7 @@ namespace InterfaceRegistrationDetail
     }
 }
 
-class Core_API FObjectRegistry
+class Object_API FObjectRegistry
 {
 public:
     static FObjectRegistry& Get();
@@ -175,6 +175,21 @@ public:
     void BindGameThread();
     bool IsOnGameThread() const;
     void CheckGameThread(const char* Operation) const;
+    
+    // ==========================================================================
+    // Module lifetime roots.
+    //
+    // One scope per module, owned here. The module manager calls none of this: it only
+    // notifies registered runtimes, and the object runtime forwards to these methods.
+    //
+    // The scope is created eagerly when a module loads and lazily as a backstop (static
+    // initialization, or a load that happened before the runtime was registered).
+    // ==========================================================================
+    RObject* GetOrCreateModuleScope(const FString& ModuleName);
+
+    // Destroys the module's scope and reports whether instances of its classes still exist
+    // elsewhere. The module's library must remain loaded if any survive.
+    bool ReleaseModuleObjects(const FString& ModuleName);
 
     // The first module to register a class owns it, and the first module to register is always
     // the one that declares the class: including a header requires depending on the module that
@@ -302,20 +317,13 @@ public:
     // Call at shutdown to prove nothing was orphaned.
     int32_t AuditLiveObjects(const char* Phase) const;
 
-    // Audits survivors, then destroys every class default object. Call once from the engine loop's
-    // Exit(), AFTER FModuleManager::UnloadAllModules(). Module authors never call this.
+    // Audits survivors, then destroys every class default object.
+    //
+    // Called by the object runtime when its own module is torn down, after every module that
+    // can create objects has unloaded. Idempotent: a failed finalization can retry.
     void Shutdown();
 
 private:
-    // ==========================================================================
-    // Lifetime roots. Mechanism only.
-    //
-    // The registry can create and destroy a root, but deliberately does NOT remember which
-    // root belongs to which module, or when it should die: that is module policy and lives in
-    // FModuleManager. Keeping the name -> root map there means there is exactly one list of
-    // modules in the process.
-    // ==========================================================================
-    friend class FModuleManager;
 
     // Creates an FObjectScope with no outer. The ONLY object in the engine allowed to have no
     // owner, and not reachable from game code. Caller becomes responsible for DestroyScope().
@@ -358,8 +366,10 @@ private:
 
     TMap<FString, FClassInfo> Classes;
     TMap<uint64_t, FLiveInstanceRecord> LiveInstances;
+    TMap<FString, RObject*> ModuleScopes;
     FClassInfo* ActiveConstructingClass = nullptr;
     RObject* ActiveConstructionSite = nullptr;
     FCdoBuildContext* ActiveCdoContext = nullptr;
     bool bBootstrapClassesRegistered = false;
+    bool bShutdownExecuted = false;
 };

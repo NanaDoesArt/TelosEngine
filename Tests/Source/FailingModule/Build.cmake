@@ -7,6 +7,7 @@ set(PUBLIC_DEPENDENCY_MODULES
 
 set(PRIVATE_DEPENDENCY_MODULES
         Engine::Core
+        Engine::RObject
         Tests::Tests
 )
 

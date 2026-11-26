@@ -2,7 +2,7 @@
 #include "FailingModuleAPI.h"
 #include "Object/Object.h"
 
-class FailingModule_API FFailingModValidPrefix : public RObject
+class FailingModule_API FFailingModValidPrefix : public Object
 {
     RCLASS(FFailingModValidPrefix)
 public:
@@ -10,10 +10,10 @@ public:
 };
 
 // Deliberately collides with "RObject" during automatic module registration
-class FailingModule_API FFailingModDuplicate : public RObject
+class FailingModule_API FFailingModDuplicate : public Object
 {
     public:
-    using Super = RObject;
+    using Super = Object;
     using ThisClass = FFailingModDuplicate;
     static const char* StaticClassName() { return "RObject"; }
 

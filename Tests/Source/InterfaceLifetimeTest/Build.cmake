@@ -9,6 +9,7 @@ set(PUBLIC_DEPENDENCY_MODULES
 # Modules used only inside this module's Private/ .cpp files (hidden from consumers)
 set(PRIVATE_DEPENDENCY_MODULES
         Engine::Core
+        Engine::RObject
         Tests::Tests
 )
 

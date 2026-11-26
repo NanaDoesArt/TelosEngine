@@ -1,7 +1,6 @@
 ﻿
 #include "Modules/ModuleManager.h"
 #include "HAL/PlatformProcess.h"
-#include "Object/ObjectRegistry.h"
 #include "Logging/Log.h"
 
 using CreateModuleFn = IModuleInterface* (*)();
@@ -12,13 +11,6 @@ FModuleManager& FModuleManager::Get()
     return Instance;
 }
 
-// Free function behind IMPLEMENT_MODULE's wrapper.
-bool ReleaseModuleObjects(const char* ModuleName)
-{
-    return FModuleManager::Get().ReleaseModuleObjects(
-        FString(ModuleName ? ModuleName : "")
-    );
-}
 
 bool FModuleManager::IsModuleLoaded(const FString& ModuleName) const
 {
@@ -26,78 +18,8 @@ bool FModuleManager::IsModuleLoaded(const FString& ModuleName) const
     return Record && Record->State == EModuleState::Started;
 }
 
-RObject* FModuleManager::GetOrCreateModuleScope(const FString& ModuleName)
-{
-    if (RObject** Existing = ModuleScopes.Find(ModuleName))
-    {
-        return *Existing;
-    }
 
-    // Static initialization before LoadModule inserts its record is allowed.
-    // Once teardown begins, however, destructors must not recreate the scope.
-    if (const FModuleRecord* Record = LoadedModules.Find(ModuleName))
-    {
-        if (Record->State == EModuleState::Stopping ||
-            Record->State == EModuleState::Failed)
-        {
-            VENGINE_LOG(
-                LogCore,
-                Error,
-                "[ModuleManager] Refused to create a lifetime scope for '{}' during teardown.",
-                ModuleName.CStr()
-            );
-            return nullptr;
-        }
-    }
 
-    RObject* Scope = FObjectRegistry::Get().CreateScope(ModuleName);
-    if (!Scope)
-    {
-        VENGINE_LOG(
-            LogCore,
-            Error,
-            "[ModuleManager] Failed to create the lifetime scope for '{}'.",
-            ModuleName.CStr()
-        );
-        return nullptr;
-    }
-
-    ModuleScopes.Add(ModuleName, Scope);
-    return Scope;
-}
-
-bool FModuleManager::ReleaseModuleObjects(const FString& ModuleName)
-{
-    // Remove the entry before destroying the scope. This prevents reentrant
-    // lookups from returning a scope that is already being destroyed.
-    if (RObject** Found = ModuleScopes.Find(ModuleName))
-    {
-        RObject* Scope = *Found;
-        ModuleScopes.Remove(ModuleName);
-
-        if (Scope)
-        {
-            FObjectRegistry::Get().DestroyScope(Scope);
-        }
-    }
-
-    int32_t LiveCount = 0;
-    if (FObjectRegistry::Get().HasLiveInstancesForModule(ModuleName, &LiveCount))
-    {
-        VENGINE_LOG(
-            LogCore,
-            Error,
-            "[ModuleManager] '{}' still has {} live object(s) after its scope was released. "
-            "They belong to classes this module declared but are owned elsewhere. "
-            "The library and its class metadata must remain loaded.",
-            ModuleName.CStr(),
-            LiveCount
-        );
-        return false;
-    }
-
-    return true;
-}
 
 IModuleInterface* FModuleManager::LoadModule(const FString& ModuleName)
 {

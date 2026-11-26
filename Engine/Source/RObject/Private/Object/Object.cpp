@@ -13,9 +13,9 @@ namespace
 {
     std::thread::id GGameThreadID = std::this_thread::get_id();
 
-    // The ONE object id counter in the process. It lives here (inside Core.dll) so every
-    // module draws from the same sequence. A header-level 'inline static' would give each
-    // DLL its own counter and produce colliding ids.
+    // The ONE object id counter in the process. It lives here (inside the Object module) so
+    // every module draws from the same sequence. A header-level 'inline static' would give
+    // each DLL its own counter and produce colliding ids.
     std::atomic<uint64_t> GNextObjectID{ 1 };
 
     // ==========================================================================
@@ -945,8 +945,30 @@ void FObjectRegistry::Shutdown()
 {
     CheckGameThread("Shutdown");
 
-    // Module teardown must already have run (FModuleManager::UnloadAllModules). The registry does
-    // not know about modules, so it does not touch scopes here: a surviving scope IS the report.
+    if (bShutdownExecuted)
+    {
+        return;
+    }
+    bShutdownExecuted = true;
+
+    // Every module that can create objects depends on the Object module, so all of them have
+    // unloaded by the time this runs. A scope that is still in the map means a module was never
+    // unloaded. Its library may already be gone, so the scope is reported, not destroyed.
+    for (const auto& Pair : ModuleScopes)
+    {
+        const FObjectScope* Scope = static_cast<const FObjectScope*>(Pair.second);
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRegistry] Module '{}' was never unloaded; its lifetime scope (ID: {}) "
+            "still owns {} object(s).",
+            Pair.first.CStr(),
+            Scope->GetUniqueID(),
+            Scope->GetChildren().Num()
+        );
+    }
+    ModuleScopes.Empty();
+
     AuditLiveObjects("engine shutdown");
 
     // Class default objects are metadata, not gameplay objects. Destroy them last, repeatedly,
@@ -967,6 +989,80 @@ void FObjectRegistry::Shutdown()
     }
 }
 
+RObject* FObjectRegistry::GetOrCreateModuleScope(const FString& ModuleName)
+{
+    CheckGameThread("GetOrCreateModuleScope");
+
+    if (RObject** Existing = ModuleScopes.Find(ModuleName))
+    {
+        return *Existing;
+    }
+
+    // Static initialization before LoadModule inserts a record is allowed. Once teardown
+    // begins, however, destructors must not recreate the scope.
+    if (FModuleManager::Get().IsModuleUnloading(ModuleName))
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRegistry] Refused to create a lifetime scope for '{}' during teardown.",
+            ModuleName.CStr()
+        );
+        return nullptr;
+    }
+
+    RObject* Scope = CreateScope(ModuleName);
+    if (!Scope)
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRegistry] Failed to create the lifetime scope for '{}'.",
+            ModuleName.CStr()
+        );
+        return nullptr;
+    }
+
+    ModuleScopes.Add(ModuleName, Scope);
+    return Scope;
+}
+
+bool FObjectRegistry::ReleaseModuleObjects(const FString& ModuleName)
+{
+    CheckGameThread("ReleaseModuleObjects");
+
+    // Remove the entry before destroying the scope. This prevents reentrant lookups from
+    // returning a scope that is already being destroyed.
+    if (RObject** Found = ModuleScopes.Find(ModuleName))
+    {
+        RObject* Scope = *Found;
+        ModuleScopes.Remove(ModuleName);
+
+        if (Scope)
+        {
+            DestroyScope(Scope);
+        }
+    }
+
+    int32_t LiveCount = 0;
+    if (HasLiveInstancesForModule(ModuleName, &LiveCount))
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRegistry] '{}' still has {} live object(s) after its scope was released. "
+            "They belong to classes this module declared but are owned elsewhere. "
+            "The library and its class metadata must remain loaded.",
+            ModuleName.CStr(),
+            LiveCount
+        );
+        return false;
+    }
+
+    return true;
+}
+
+
 RObject* FObjectRegistry::CreateScope(const FString& ScopeName)
 {
     CheckGameThread("CreateScope");
@@ -980,9 +1076,9 @@ RObject* FObjectRegistry::CreateScope(const FString& ScopeName)
         return nullptr;
     }
 
-    // Constructed with no outer on purpose: the scope is the root of a module's subtree, owned by
-    // whoever called us (FModuleManager), not by another object. This is the only path in the
-    // engine that bypasses the "every object has an outer" rule.
+    // Constructed with no outer on purpose: the scope is the root of a module's subtree, owned
+    // by the registry, not by another object. This is the only path in the engine that bypasses
+    // the "every object has an outer" rule.
     FObjectScope* Scope = static_cast<FObjectScope*>(ConstructInternal(ScopeClass, nullptr));
     if (!Scope)
     {
