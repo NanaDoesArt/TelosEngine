@@ -167,7 +167,7 @@ bool FModuleManager::RegisterRuntime(
     }
     
 
-    Runtimes.Add({ OwnerModule, Runtime });
+    Runtimes.Add({ OwnerModule, Runtime, {} });
 
     VENGINE_LOG(
         LogCore,
@@ -217,6 +217,45 @@ void FModuleManager::RemoveRuntimesOwnedBy(const FString& ModuleName)
     }
 }
 
+void FModuleManager::RemoveServicedModule(const FString& ModuleName)
+{
+    for (FRuntimeRecord& Runtime : Runtimes)
+    {
+        Runtime.ServicedModules.Remove(ModuleName);
+    }
+}
+
+bool FModuleManager::HasServicedModules(
+    const FString& OwnerModule,
+    FString* OutFirstModule
+) const
+{
+    for (const FRuntimeRecord& Runtime : Runtimes)
+    {
+        if (Runtime.OwnerModule != OwnerModule)
+        {
+            continue;
+        }
+
+        for (const FString& ServicedModule : Runtime.ServicedModules)
+        {
+            // Failed and detached records count too: their DLL or runtime
+            // representation still requires the runtime to remain alive.
+            if (LoadedModules.Find(ServicedModule))
+            {
+                if (OutFirstModule)
+                {
+                    *OutFirstModule = ServicedModule;
+                }
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool FModuleManager::HasRuntimeOwnedBy(const FString& ModuleName) const
 {
     for (const FRuntimeRecord& Runtime : Runtimes)
@@ -259,6 +298,23 @@ bool FModuleManager::NotifyModuleLoaded(const FString& ModuleName)
         if (Entry.OwnerModule == ModuleName)
         {
             continue;
+        }
+
+        // Record the relationship before invoking external code.
+        // Even if OnModuleLoaded() fails partway through, the failed module
+        // must be cleaned up before this runtime can disappear.
+        for (FRuntimeRecord& Registered : Runtimes)
+        {
+            if (Registered.OwnerModule == Entry.OwnerModule &&
+                Registered.Runtime == Entry.Runtime)
+            {
+                if (!Registered.ServicedModules.Contains(ModuleName))
+                {
+                    Registered.ServicedModules.Add(ModuleName);
+                }
+
+                break;
+            }
         }
 
         bool bSuccess = false;
@@ -746,25 +802,24 @@ bool FModuleManager::UnloadModule(
         return false;
     }
 
-    // A runtime implementation must outlive every module whose state it
-    // manages. Runtime modules are foundational and must be unloaded last.
+    // A runtime must outlive every module whose state it services.
+    // Its own prerequisites are not consumers and do not block its unload.
     if (HasRuntimeOwnedBy(ModuleName))
     {
-        for (const FString& LoadedName : LoadOrder)
+        FString BlockingModule;
+
+        if (HasServicedModules(ModuleName, &BlockingModule))
         {
-            if (LoadedName != ModuleName &&
-                LoadedModules.Find(LoadedName))
-            {
-                VENGINE_LOG(
-                    LogCore,
-                    Error,
-                    "[ModuleManager] Cannot unload runtime owner '{}' while "
-                    "module '{}' is still loaded.",
-                    ModuleName.CStr(),
-                    LoadedName.CStr()
-                );
-                return false;
-            }
+            VENGINE_LOG(
+                LogCore,
+                Error,
+                "[ModuleManager] Cannot unload runtime owner '{}' while "
+                "serviced module '{}' is still loaded.",
+                ModuleName.CStr(),
+                BlockingModule.CStr()
+            );
+
+            return false;
         }
     }
 
@@ -956,6 +1011,10 @@ bool FModuleManager::UnloadModule(
     LoadOrder.Remove(ModuleName);
 
     FPlatformProcess::FreeDllHandle(Handle);
+    
+    // The module is now completely gone. No runtime needs to retain
+    // its serviced-module relationship anymore.
+    RemoveServicedModule(ModuleName);
 
     VENGINE_LOG(
         LogCore,

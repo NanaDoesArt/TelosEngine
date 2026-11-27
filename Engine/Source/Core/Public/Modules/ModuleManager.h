@@ -64,6 +64,10 @@ class Core_API FModuleManager
     {
         FString OwnerModule;
         IModuleRuntime* Runtime = nullptr;
+        
+        // Modules for which this runtime was asked to initialize state.
+        // They must finish unloading before the runtime owner can unload.
+        TArray<FString> ServicedModules;
     };
 
     struct FUnloadGuard
@@ -84,7 +88,9 @@ class Core_API FModuleManager
             }
         }
     };
-
+    
+    void RemoveServicedModule(const FString& ModuleName);
+    bool HasServicedModules(const FString& OwnerModule,FString* OutFirstModule = nullptr) const;
     bool NotifyModuleLoaded(const FString& ModuleName);
     bool CanDetachModule(const FString& ModuleName) const;
     bool NotifyModuleTeardown(const FString& ModuleName, EModuleTeardownMode Mode);
