@@ -5,6 +5,7 @@ set(LOADING_PHASE "PostEngineInit")
 # Modules exposed in this module's Public/ headers (inherited by consumers)
 set(PUBLIC_DEPENDENCY_MODULES
         Engine::Core
+        Engine::RObject
         Engine::Engine
 )
 

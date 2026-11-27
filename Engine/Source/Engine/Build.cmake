@@ -8,7 +8,8 @@ set(PUBLIC_DEPENDENCY_MODULES
 
 set(PRIVATE_DEPENDENCY_MODULES
     # Hide internal engine wrapper dependencies securely
-    Engine::Core
+        Engine::Core
+        Engine::RObject
 )
 
 set(THIRD_PARTY_DEPENDENCIES

@@ -333,8 +333,12 @@ struct FModuleClassRegistry
         } \
         bool FinalizeModule() override \
         { \
-            return FModuleClassRegistry::UnregisterAll(); \
-        } \
+            if (!ModuleClass::FinalizeModule()) \
+            { \
+                return false; \
+            } \
+    return FModuleClassRegistry::UnregisterAll(); \
+}\
     }; \
     extern "C" VENGINE_DLLEXPORT IModuleInterface* CreateModule() \
     { \

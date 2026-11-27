@@ -148,5 +148,18 @@ bool RegisterObjectRuntime(const char* OwnerModule)
     }
 
     FModuleManager::Get().RegisterRuntime(Owner, &Runtime);
+    if (!FModuleManager::Get().RegisterRuntime(Owner, &Runtime))
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ObjectRuntime] Failed to register the object runtime."
+        );
+
+        FObjectRegistry::Get().ReleaseModuleObjects(Owner);
+        return false;
+    }
+
+    return true;
     return true;
 }

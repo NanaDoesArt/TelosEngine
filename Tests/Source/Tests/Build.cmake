@@ -6,7 +6,8 @@ set(PUBLIC_DEPENDENCY_MODULES
 )
 
 set(PRIVATE_DEPENDENCY_MODULES
-    Engine::Core
+        Engine::Core 
+        Engine::RObject
 )
 
 set(PUBLIC_THIRD_PARTY_DEPENDENCIES

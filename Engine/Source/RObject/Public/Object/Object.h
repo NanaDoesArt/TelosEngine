@@ -15,7 +15,7 @@ class RObject;
 class RObject_API RObject
 {
 public:
-    using ThisClass = Object;
+    using ThisClass = RObject;
 
     RObject(RObject* InOuter = nullptr);
     virtual ~RObject();
@@ -103,7 +103,7 @@ inline void Destroy(RObject* Obj)
 // Not RCLASS'd on purpose: RCLASS installs a per-DLL auto-registrar, and this class must be
 // registered exactly once, by the object runtime, on first use (see EnsureBootstrapClasses()).
 // ==============================================================================
-class Object_API FObjectScope : public RObject
+class RObject_API FObjectScope : public RObject
 {
 public:
     using Super = RObject;
@@ -191,7 +191,7 @@ T* NewObject()
 {
     FObjectRegistry& Registry = FObjectRegistry::Get();
 
-    Object* Owner = Registry.GetConstructionSite();
+    RObject* Owner = Registry.GetConstructionSite();
     if (!Owner)
     {
         // Which DLL compiled this call decides the owner. That is the point: the object cannot

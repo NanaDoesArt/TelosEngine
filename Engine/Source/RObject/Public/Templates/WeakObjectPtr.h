@@ -6,7 +6,7 @@
 template <typename T>
 class TWeakObjectPtr
 {
-    static_assert(std::is_base_of_v<Object, T>, "TWeakObjectPtr<T> requires T to inherit from RObject!");
+    static_assert(std::is_base_of_v<RObject, T>, "TWeakObjectPtr<T> requires T to inherit from RObject!");
 
 public:
     TWeakObjectPtr() = default;
@@ -28,7 +28,7 @@ public:
         {
             return nullptr;
         }
-        Object* Found = FObjectRegistry::Get().FindInstance(ObjectUniqueID);
+        RObject* Found = FObjectRegistry::Get().FindInstance(ObjectUniqueID);
         return Cast<T>(Found);
     }
 

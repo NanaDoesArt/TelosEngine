@@ -44,7 +44,7 @@ class Core_API FModuleManager
     // Register from the runtime owner's PrepareModule. It is a no-op for a runtime that is
     // already registered.
     // ==========================================================================
-    void RegisterRuntime(const FString& OwnerModule, IModuleRuntime* Runtime);
+    bool RegisterRuntime(const FString& OwnerModule, IModuleRuntime* Runtime);
     void UnregisterRuntime(IModuleRuntime* Runtime);
 
     private:

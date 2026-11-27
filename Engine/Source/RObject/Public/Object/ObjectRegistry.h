@@ -167,7 +167,7 @@ namespace InterfaceRegistrationDetail
     }
 }
 
-class Object_API FObjectRegistry
+class RObject_API FObjectRegistry
 {
 public:
     static FObjectRegistry& Get();

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "ObjectAPI.h"
+#include "RObjectAPI.h"
 
 // Registers the engine's object runtime with the module manager.
 //
@@ -10,4 +10,4 @@
 // is destroyed by the module unloader, not by the manager.
 //
 // Returns false when the owner's own lifetime scope cannot be created, which fails the load.
-Object_API bool RegisterObjectRuntime(const char* OwnerModule);
+RObject_API bool RegisterObjectRuntime(const char* OwnerModule);
