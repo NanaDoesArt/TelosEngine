@@ -286,7 +286,7 @@ public:
             // Every module that includes a header gets its own copy of the registrar. The second
             // copy must be accepted and ignored, not treated as an error.
             const EClassRegistrationResult DuplicateResult =
-                Registry.RegisterClass<Object>("Tests_Tests");
+                Registry.RegisterClass<RObject>("Tests_Tests");
 
             VerifyCheck(
                 DuplicateResult == EClassRegistrationResult::AlreadyRegistered,
@@ -326,24 +326,24 @@ public:
 
             TWeakObjectPtr<FTestLeafEntity> WeakScoped = Scoped;
 
-            const bool bReleased = FModuleManager::Get().ReleaseModuleObjects("Tests_Tests");
+            const bool bReleased = Registry.ReleaseModuleObjects("Tests_Tests");
             VerifyCheck(bReleased, "ScopeRelease", "Releasing the module's objects succeeded with no survivors.");
             VerifyCheck(!WeakScoped.IsValid(), "ScopeReleaseDestroyed", "Releasing the module scope destroyed the object it owned.");
         }
 
         // 7. An object that escaped its module scope keeps the module's classes registered
         {
-            RObject* ForeignRoot = FModuleManager::Get().GetOrCreateModuleScope("Tests_EscapeHatch");
+            RObject* ForeignRoot = Registry.GetOrCreateModuleScope("Tests_EscapeHatch");
             VerifyCheck(ForeignRoot != nullptr, "EscapeRoot", "Foreign scope created.");
 
             FTestLeafEntity* Escaped = NewObject<FTestLeafEntity>(ForeignRoot);
             VerifyCheck(Escaped != nullptr && Escaped->GetOuter() == ForeignRoot, "EscapeParented", "Object parented outside its own module scope.");
 
-            const bool bReleased = FModuleManager::Get().ReleaseModuleObjects("Tests_Tests");
+            const bool bReleased = Registry.ReleaseModuleObjects("Tests_Tests");
             VerifyCheck(!bReleased, "EscapeBlocksRelease", "ReleaseModuleObjects() reports survivors when an object escaped the scope.");
 
             TWeakObjectPtr<FTestLeafEntity> WeakEscaped = Escaped;
-            const bool bForeignReleased = FModuleManager::Get().ReleaseModuleObjects("Tests_EscapeHatch");
+            const bool bForeignReleased = Registry.ReleaseModuleObjects("Tests_EscapeHatch");
             VerifyCheck(bForeignReleased && !WeakEscaped.IsValid(), "EscapeCleanup", "Destroying the foreign scope destroyed the escaped object.");
         }
         
@@ -637,8 +637,8 @@ public:
                 FTestVehicle::StaticClassName(),
                 "RObject",
                 "Tests_LayoutMismatch",
-                []() -> Object* { return nullptr; },
-                [](Object*) {},
+                []() -> RObject* { return nullptr; },
+                [](RObject*) {},
                 Vehicle->ClassSize + 8,
                 Vehicle->ClassAlignment
             );

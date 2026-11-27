@@ -119,16 +119,6 @@ bool FModuleManager::RegisterRuntime(
         return false;
     }
 
-    if (OwnerModule.IsEmpty() || !Runtime)
-    {
-        VENGINE_LOG(
-            LogCore,
-            Error,
-            "[ModuleManager] Invalid runtime registration."
-        );
-        return false;
-    }
-
     FModuleRecord* OwnerRecord = LoadedModules.Find(OwnerModule);
 
     // Runtime registration belongs in the implementing module's

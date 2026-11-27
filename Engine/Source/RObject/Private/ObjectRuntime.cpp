@@ -147,7 +147,6 @@ bool RegisterObjectRuntime(const char* OwnerModule)
         return false;
     }
 
-    FModuleManager::Get().RegisterRuntime(Owner, &Runtime);
     if (!FModuleManager::Get().RegisterRuntime(Owner, &Runtime))
     {
         VENGINE_LOG(
@@ -159,7 +158,5 @@ bool RegisterObjectRuntime(const char* OwnerModule)
         FObjectRegistry::Get().ReleaseModuleObjects(Owner);
         return false;
     }
-
-    return true;
     return true;
 }
