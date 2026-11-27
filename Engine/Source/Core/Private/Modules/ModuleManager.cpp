@@ -119,6 +119,17 @@ bool FModuleManager::RegisterRuntime(
         return false;
     }
 
+    if (!Runtime)
+    {
+        VENGINE_LOG(
+            LogCore,
+            Error,
+            "[ModuleManager] Cannot register a null runtime for '{}'.",
+            OwnerModule.CStr()
+        );
+        return false;
+    }
+
     FModuleRecord* OwnerRecord = LoadedModules.Find(OwnerModule);
 
     // Runtime registration belongs in the implementing module's

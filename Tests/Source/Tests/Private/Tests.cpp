@@ -658,8 +658,8 @@ public:
                 FTestVehicle::StaticClassName(),
                 "RObject",
                 "Tests_LayoutMismatch",
-                []() -> Object* { return nullptr; },
-                [](Object*) {},
+                []() -> RObject* { return nullptr; },
+                [](RObject*) {},
                 Vehicle->ClassSize,
                 Vehicle->ClassAlignment
             );
