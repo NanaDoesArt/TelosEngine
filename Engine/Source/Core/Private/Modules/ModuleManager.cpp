@@ -119,13 +119,12 @@ bool FModuleManager::RegisterRuntime(
         return false;
     }
 
-    if (!Runtime)
+    if (OwnerModule.IsEmpty() || !Runtime)
     {
         VENGINE_LOG(
             LogCore,
             Error,
-            "[ModuleManager] Cannot register a null runtime for '{}'.",
-            OwnerModule.CStr()
+            "[ModuleManager] Invalid runtime registration."
         );
         return false;
     }
@@ -166,21 +165,7 @@ bool FModuleManager::RegisterRuntime(
             return false;
         }
     }
-
-    // Runtime implementations must be registered before the modules they
-    // service. This ensures they receive every subsequent OnModuleLoaded
-    // notification and avoids trying to reconstruct unknown historical state.
-    if (!LoadOrder.IsEmpty())
-    {
-        VENGINE_LOG(
-            LogCore,
-            Error,
-            "[ModuleManager] Runtime '{}' registered too late. "
-            "Runtime modules must load before modules that depend on them.",
-            OwnerModule.CStr()
-        );
-        return false;
-    }
+    
 
     Runtimes.Add({ OwnerModule, Runtime });
 
