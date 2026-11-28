@@ -4,11 +4,11 @@ set(LOADING_PHASE "PreDefault")
 
 # Modules exposed in this module's Public/ headers (inherited by consumers)
 set(PUBLIC_DEPENDENCY_MODULES
+        Engine::Core
 )
 
 # Modules used only inside this module's Private/ .cpp files (hidden from consumers)
 set(PRIVATE_DEPENDENCY_MODULES
-        Engine::Core
 )
 
 # Move Engine::Core to PUBLIC_DEPENDENCY_MODULES as soon as a Public/ header includes a

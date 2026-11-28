@@ -36,7 +36,7 @@
 // Parses the compiler's signature string, strips the class-key and any anonymous
 // namespace, then interns the result in Core. Never returns null. Defined in Core so
 // every module shares one string table and one pointer per type.
-Core_API const char* InternQualifiedTypeName(const char* RawSignature);
+RObject_API const char* InternQualifiedTypeName(const char* RawSignature);
 
 template <typename T>
 const char* QualifiedTypeName()

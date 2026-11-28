@@ -11,7 +11,6 @@
 #include <string>
 
 FEngineLoop GEngineLoop;
-
 using GetBootModulesFn = const char* const* (*)(int*);
 
 int FEngineLoop::PreInit(int, char*[])
@@ -115,7 +114,6 @@ void FEngineLoop::Tick()
         ++FrameHistoryCount;
     }
     
-
     // 2. The console dashboard. TryEnable() is a no-op once it has succeeded, and stays off when
     //    stdout is redirected, so this needs no switch: the console is simply the current front-end.
     FConsoleDashboard::Get().TryEnable();

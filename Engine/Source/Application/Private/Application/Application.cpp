@@ -60,7 +60,7 @@ FWindow* FApplication::CreateWindow(const FWindowDefinition& Definition)
         return nullptr;
     }
 
-    FWindow* Window = new FWindow(this, PlatformWindow, Definition);
+    FWindow* Window = new FWindow(PlatformApplication.Get(), PlatformWindow, Definition);
     Windows.Add(Window);
 
     VENGINE_LOG(
